@@ -1,0 +1,23 @@
+#.pio
+#.vscode/.browse.c_cpp.db*
+#.vscode/c_cpp_properties.json
+#.vscode/launch.json
+#.vscode/ipch
+
+# PlatformIO build directory
+pio/
+# VS Code settings
+vscode/
+# Compiled binaries
+*.elf
+*.bin
+*.hex
+*.map
+# OS files
+DS_Store
+Thumbs.db
+# Release artifacts
+releases/
+# Test outputs
+src/parser/data_*
+src/parcer/.vscode
