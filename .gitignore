@@ -5,16 +5,16 @@
 #.vscode/ipch
 
 # PlatformIO build directory
-pio/
+.pio/
 # VS Code settings
-vscode/
+.vscode/
 # Compiled binaries
 *.elf
 *.bin
 *.hex
 *.map
 # OS files
-DS_Store
+.DS_Store
 Thumbs.db
 # Release artifacts
 releases/
