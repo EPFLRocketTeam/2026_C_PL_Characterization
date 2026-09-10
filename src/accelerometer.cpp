@@ -1,31 +1,24 @@
 #include "accelerometer.h"
 
 volatile bool accel_main_int = false;
-volatile bool accel_sat_1_int = false;
-volatile bool accel_sat_2_int = false;
+volatile bool accel_sat_int = false;
 
 volatile uint32_t accel_main_timestamp = 0;
-volatile uint32_t accel_sat_1_timestamp = 0;
-volatile uint32_t accel_sat_2_timestamp = 0;
+volatile uint32_t accel_sat_timestamp = 0;
 
-ADXL372_PACKET adxl372_packet;
+ADXL371_PACKET adxl371_packet;
 
-uint32_t adxl372_overruns[3] = {0, 0, 0};
-uint32_t adxl372_invalid_blocks[3] = {0, 0, 0};
+uint32_t adxl371_overruns[3] = {0, 0, 0};
+uint32_t adxl371_invalid_blocks[3] = {0, 0, 0};
 
-FASTRUN void accel_main_ISR() {
-    accel_main_timestamp = micros();
-    accel_main_int = true;
+FASTRUN void adxl_main_ISR() {
+    adxl_main_timestamp = micros();
+    adxl_main_int = true;
 }
 
-FASTRUN void accel_sat_1_ISR() {
-    accel_sat_1_timestamp = micros();
-    accel_sat_1_int = true;
-}
-
-FASTRUN void accel_sat_2_ISR() {
-    accel_sat_2_timestamp = micros();
-    accel_sat_2_int = true;
+FASTRUN void adxl_sat_ISR() {
+    adxl_sat_timestamp = micros();
+    adxl_sat_int = true;
 }
 
 const char *fifo_order_name(FifoAxisOrder order) {
@@ -35,23 +28,23 @@ const char *fifo_order_name(FifoAxisOrder order) {
 }
 
 int sensor_index(uint8_t sensor_id) {
-    if (sensor_id < ID_ADXL372_MAIN || sensor_id > ID_ADXL372_SAT_2) {
+    if (sensor_id < ID_ADXL371_MAIN || sensor_id > ID_ADXL371_SAT) {
         return -1;
     }
 
-    return sensor_id - ID_ADXL372_MAIN;
+    return sensor_id - ID_ADXL371_MAIN;
 }
 
-bool setup_adxl372(ADXL372class *accel) {
+bool setup_adxl371(ADXL371class *accel) {
     /*
-    * Initializes an ADXL372 accelerometer and performs a self-test
+    * Initializes an ADXL371 accelerometer and performs a self-test
     */
     accel->begin();
     
     if (!accel->isConnected()) {
         #ifdef DEBUG_
         accel->printDevice();
-        Serial.println("ADXL372 is not connected");
+        Serial.println("ADXL371 is not connected");
         #endif
         return false; // Sensor is missing or SPI is dead
     }
@@ -59,7 +52,7 @@ bool setup_adxl372(ADXL372class *accel) {
     if (!accel->reset()) {
         #ifdef DEBUG_
         accel->printDevice();
-        Serial.println("ADXL372 reset or post-reset ID check failed.");
+        Serial.println("ADXL371 reset or post-reset ID check failed.");
         #endif
         return false;
     }
@@ -118,13 +111,13 @@ bool setup_adxl372(ADXL372class *accel) {
     accel->setOperatingMode(STANDBY);
     accel->setFifoMode(STREAM);
 
-    adxl372_packet.header.sync_word = 0xAAAA;
-    adxl372_packet.header.payload_len = sizeof(adxl372_packet.data);
+    adxl371_packet.header.sync_word = 0xAAAA;
+    adxl371_packet.header.payload_len = sizeof(adxl371_packet.data);
 
     return true;
 }
 
-void start_adxl372(ADXL372class *accel, uint8_t interrupt_pin, void (*isr)()) {
+void start_adxl371(ADXL371class *accel, uint8_t interrupt_pin, void (*isr)()) {
     pinMode(interrupt_pin, INPUT);
 
     // Clear any old status before enabling the interrupt.
@@ -135,7 +128,7 @@ void start_adxl372(ADXL372class *accel, uint8_t interrupt_pin, void (*isr)()) {
 }
 
 
-void print_adxl372_accel(ADXL372class *accel) {
+void print_adxl371_accel(ADXL371class *accel) {
     /*
     * Reads latest measurement and prints to Serial
     */
@@ -149,20 +142,20 @@ void print_adxl372_accel(ADXL372class *accel) {
     #endif
 }
 
-void log_adxl372_fifo(ADXL372class *accel, uint32_t timestamp, uint8_t sensor_id) {
+void log_adxl371_fifo(ADXL371class *accel, uint32_t timestamp, uint8_t sensor_id) {
     int index = sensor_index(sensor_id);
 
     uint8_t status_before = accel->getStatus();
-    bool valid = accel->readFifoData(adxl372_packet.data);
+    bool valid = accel->readFifoData(adxl371_packet.data);
     uint8_t status_after = accel->getStatus();
 
     if (index >= 0 && ((status_before | status_after) & FIFO_OVR)) {
-        adxl372_overruns[index]++;
+        adxl371_overruns[index]++;
     }
 
     if (!valid) {
         if (index >= 0) {
-            adxl372_invalid_blocks[index]++;
+            adxl371_invalid_blocks[index]++;
         }
         return;
     }
@@ -170,35 +163,35 @@ void log_adxl372_fifo(ADXL372class *accel, uint32_t timestamp, uint8_t sensor_id
     // The first FIFO packet is used only to determine the axis order.
     if (!accel->isFifoAxisOrderDetected()) {
         accel->detectFifoAxisOrder(
-            adxl372_packet.data,
-            ADXL372_PACKET_SAMPLES
+            adxl371_packet.data,
+            ADXL371_PACKET_SAMPLES
         );
 
         #ifdef DEBUG_
-        Serial.print("ADXL372 FIFO order detected: ");
+        Serial.print("ADXL371 FIFO order detected: ");
         Serial.println(fifo_order_name(accel->getFifoAxisOrder()));
         #endif
 
         return;
     }
 
-    adxl372_packet.header.sensor_type = sensor_id;
-    adxl372_packet.header.timestamp = timestamp;
+    adxl371_packet.header.sensor_type = sensor_id;
+    adxl371_packet.header.timestamp = timestamp;
     
-    ring_buffer_push((uint8_t*)&adxl372_packet, sizeof(adxl372_packet));
+    ring_buffer_push((uint8_t*)&adxl371_packet, sizeof(adxl371_packet));
 }
 
-void print_adxl372_diagnostics() {
+void print_adxl371_diagnostics() {
     #ifdef DEBUG_
-    const char *names[3] = {"Main", "Sat 1", "Sat 2"};
+    const char *names[3] = {"Main", "Sat"};
 
-    for (uint8_t i = 0; i < 3; i++) {
-        Serial.print("ADXL372 ");
+    for (uint8_t i = 0; i < 2; i++) {
+        Serial.print("ADXL371 ");
         Serial.print(names[i]);
         Serial.print(": overruns=");
-        Serial.print(adxl372_overruns[i]);
+        Serial.print(adxl371_overruns[i]);
         Serial.print(", invalid blocks=");
-        Serial.println(adxl372_invalid_blocks[i]);
+        Serial.println(adxl371_invalid_blocks[i]);
     }
     #endif
 }

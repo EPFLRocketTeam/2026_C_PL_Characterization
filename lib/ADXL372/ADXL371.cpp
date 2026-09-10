@@ -1,6 +1,6 @@
-#include "ADXL372.h"
+#include "ADXL371.h"
 
-ADXL372class::ADXL372class(int csPinInput, SPIClass &spi)
+ADXL371class::ADXL371class(int csPinInput, SPIClass &spi)
 {
     m_csPin = csPinInput;
     m_spi = &spi;
@@ -12,11 +12,11 @@ ADXL372class::ADXL372class(int csPinInput, SPIClass &spi)
     m_referenceZ = 0;
 }
 
-ADXL372class::~ADXL372class()
+ADXL371class::~ADXL371class()
 {
 }
 
-void ADXL372class::begin()
+void ADXL371class::begin()
 {
     m_spi->begin();
     // m_spi->beginTransaction(SPISettings(SPI_SPEED)); // CPHA = CPOL = 0
@@ -25,7 +25,7 @@ void ADXL372class::begin()
     digitalWrite(m_csPin, HIGH);                                       // Pin ready
 }
 
-void ADXL372class::begin(uint32_t spiClockSpeed)
+void ADXL371class::begin(uint32_t spiClockSpeed)
 {
     m_spi->begin();
     
@@ -35,7 +35,7 @@ void ADXL372class::begin(uint32_t spiClockSpeed)
     digitalWrite(m_csPin, HIGH);                                           // Pin ready
 }
 
-bool ADXL372class::reset()
+bool ADXL371class::reset()
 {
     setOperatingMode(STANDBY);
     delay(1);
@@ -48,14 +48,14 @@ bool ADXL372class::reset()
     return isConnected();
 }
 
-void ADXL372class::end()
+void ADXL371class::end()
 {
     // set some adresses here
 
     m_spi->end();
 }
 
-void ADXL372class::printDevice()
+void ADXL371class::printDevice()
 {
     byte devidAd = readRegister(DEVID_AD);
     byte devidMst = readRegister(DEVID_MST);
@@ -79,17 +79,17 @@ void ADXL372class::printDevice()
     Serial.println(status, HEX);
 }
 
-byte ADXL372class::getPartId() {
+byte ADXL371class::getPartId() {
     // Reads and returns the physical PARTID register (0xFA expected)
     return readRegister(PARTID);
 }
 
-uint8_t ADXL372class::getStatus()
+uint8_t ADXL371class::getStatus()
 {
     return readRegister(STATUS);
 }
 
-bool ADXL372class::isConnected() {
+bool ADXL371class::isConnected() {
     uint8_t devidAd  = readRegister(DEVID_AD);
     uint8_t devidMst = readRegister(DEVID_MST);
     uint8_t partId   = readRegister(PARTID);
@@ -99,7 +99,7 @@ bool ADXL372class::isConnected() {
            partId   == DEVID_PRODUCT;
 }
 
-bool ADXL372class::getRawAcceleration(int16_t &raw_x, int16_t &raw_y, int16_t &raw_z)
+bool ADXL371class::getRawAcceleration(int16_t &raw_x, int16_t &raw_y, int16_t &raw_z)
 {
     raw_x = 0;
     raw_y = 0;
@@ -125,7 +125,7 @@ bool ADXL372class::getRawAcceleration(int16_t &raw_x, int16_t &raw_y, int16_t &r
     return true;
 }
 
-void ADXL372class::readAcceleration(float &x, float &y, float &z)
+void ADXL371class::readAcceleration(float &x, float &y, float &z)
 {
     int16_t raw_x, raw_y, raw_z;
     getRawAcceleration(raw_x, raw_y, raw_z);
@@ -136,7 +136,7 @@ void ADXL372class::readAcceleration(float &x, float &y, float &z)
     z = raw_z * SCALE_FACTOR * MG_TO_G;
 }
 
-void ADXL372class::readPeakAcceleration(float &xPeak, float &yPeak, float &zPeak)
+void ADXL371class::readPeakAcceleration(float &xPeak, float &yPeak, float &zPeak)
 {
     const uint32_t start = micros();
     while ((readRegister(STATUS) & 0x01) == 0) {
@@ -162,7 +162,7 @@ void ADXL372class::readPeakAcceleration(float &xPeak, float &yPeak, float &zPeak
     zPeak = rawZ * SCALE_FACTOR * MG_TO_G;
 }
 
-void ADXL372class::setOffsetTrims(float xOffset, float yOffset, float zOffset)
+void ADXL371class::setOffsetTrims(float xOffset, float yOffset, float zOffset)
 {
     int xOffsetConverted = convertOffsetValue(xOffset);
     int yOffsetConverted = convertOffsetValue(yOffset);
@@ -173,7 +173,7 @@ void ADXL372class::setOffsetTrims(float xOffset, float yOffset, float zOffset)
     writeRegister(OFFSET_Z, zOffsetConverted);
 }
 
-uint8_t ADXL372class::formatThresholdValue(uint16_t thresholdValue)
+uint8_t ADXL371class::formatThresholdValue(uint16_t thresholdValue)
 {
     if (thresholdValue > 0x7FF) // The threshold value is an 11-bit value. So the max limit is 0x7FF.
     {
@@ -182,7 +182,7 @@ uint8_t ADXL372class::formatThresholdValue(uint16_t thresholdValue)
     return thresholdValue = thresholdValue >> 3; // Get 8 MSB
 }
 
-void ADXL372class::setActivityThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
+void ADXL371class::setActivityThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
 {
     checkStandbyMode();
     uint8_t xThresh8Msb = formatThresholdValue(xThreshold);
@@ -198,7 +198,7 @@ void ADXL372class::setActivityThresholds(uint16_t xThreshold, uint16_t yThreshol
     updateRegister(THRESH_ACT_Z_L, (zThreshold << 5), THRESH_ACT_L_MASK);
 }
 
-void ADXL372class::enableActivityDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
+void ADXL371class::enableActivityDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
 {
     checkStandbyMode();
     updateRegister(THRESH_ACT_X_L, isEnabledX, ACT_EN_MASK); // bit 1 in register
@@ -206,13 +206,13 @@ void ADXL372class::enableActivityDetection(bool isEnabledX, bool isEnabledY, boo
     updateRegister(THRESH_ACT_Z_L, isEnabledZ, ACT_EN_MASK);
 }
 
-void ADXL372class::setReferencedActivityProcessing(bool isReferenced)
+void ADXL371class::setReferencedActivityProcessing(bool isReferenced)
 {
     checkStandbyMode();
     updateRegister(THRESH_ACT_X_L, isReferenced << 1, ACT_REF_MASK); // bit 1 in register
 }
 
-void ADXL372class::setActivityTimer(uint8_t timerPeriod)
+void ADXL371class::setActivityTimer(uint8_t timerPeriod)
 {
     checkStandbyMode();
     uint8_t currentOpMode = readRegister(POWER_CTL);
@@ -224,7 +224,7 @@ void ADXL372class::setActivityTimer(uint8_t timerPeriod)
     writeRegister(TIME_ACT, timerPeriod);
 }
 
-void ADXL372class::setInactivityThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
+void ADXL371class::setInactivityThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
 {
     checkStandbyMode();
     uint8_t xThresh8Msb = formatThresholdValue(xThreshold);
@@ -240,7 +240,7 @@ void ADXL372class::setInactivityThresholds(uint16_t xThreshold, uint16_t yThresh
     updateRegister(THRESH_INACT_Z_L, (zThreshold << 5), THRESH_INACT_L_MASK);
 }
 
-void ADXL372class::enableInactivityDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
+void ADXL371class::enableInactivityDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
 {
     checkStandbyMode();
     updateRegister(THRESH_INACT_X_L, isEnabledX, INACT_EN_MASK);
@@ -248,13 +248,13 @@ void ADXL372class::enableInactivityDetection(bool isEnabledX, bool isEnabledY, b
     updateRegister(THRESH_INACT_Z_L, isEnabledZ, INACT_EN_MASK);
 }
 
-void ADXL372class::setReferencedInactivityProcessing(bool isReferenced)
+void ADXL371class::setReferencedInactivityProcessing(bool isReferenced)
 {
     checkStandbyMode();
     updateRegister(THRESH_INACT_X_L, isReferenced << 1, INACT_REF_MASK);
 }
 
-void ADXL372class::setInactivityTimer(uint16_t timerPeriod)
+void ADXL371class::setInactivityTimer(uint16_t timerPeriod)
 {
     checkStandbyMode();
     uint8_t timerPeriodH = timerPeriod >> 8;
@@ -264,7 +264,7 @@ void ADXL372class::setInactivityTimer(uint16_t timerPeriod)
     writeRegister(TIME_INACT_L, timerPeriodL);
 }
 
-void ADXL372class::setMotionWarningThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
+void ADXL371class::setMotionWarningThresholds(uint16_t xThreshold, uint16_t yThreshold, uint16_t zThreshold)
 {
     uint8_t xThresh8Msb = formatThresholdValue(xThreshold);
     writeRegister(THRESH_ACT2_X_H, xThresh8Msb);
@@ -278,18 +278,18 @@ void ADXL372class::setMotionWarningThresholds(uint16_t xThreshold, uint16_t yThr
     writeRegister(THRESH_ACT2_Z_H, zThresh8Msb);
     updateRegister(THRESH_ACT2_Z_L, (zThreshold << 5), THRESH_ACT2_L_MASK);
 }
-void ADXL372class::enableMotionWarningDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
+void ADXL371class::enableMotionWarningDetection(bool isEnabledX, bool isEnabledY, bool isEnabledZ)
 {
     updateRegister(THRESH_ACT2_X_L, isEnabledX, ACT_EN_MASK); // bit 1 in register
     updateRegister(THRESH_ACT2_Y_L, isEnabledY, ACT_EN_MASK);
     updateRegister(THRESH_ACT2_Z_L, isEnabledZ, ACT_EN_MASK);
 }
-void ADXL372class::setReferencedMotionWarningProcessing(bool isReferenced)
+void ADXL371class::setReferencedMotionWarningProcessing(bool isReferenced)
 {
     updateRegister(THRESH_ACT2_X_L, isReferenced << 1, ACT2_REF_MASK);
 }
 
-void ADXL372class::setFifoReference(int16_t x, int16_t y, int16_t z)
+void ADXL371class::setFifoReference(int16_t x, int16_t y, int16_t z)
 {
     m_referenceX = x;
     m_referenceY = y;
@@ -297,7 +297,7 @@ void ADXL372class::setFifoReference(int16_t x, int16_t y, int16_t z)
     m_fifoAxisOrder = FifoAxisOrder::UNKNOWN;
 }
 
-bool ADXL372class::detectFifoAxisOrder(const TRIPLET *samples, uint16_t sample_count)
+bool ADXL371class::detectFifoAxisOrder(const TRIPLET *samples, uint16_t sample_count)
 {
     if (samples == nullptr || sample_count == 0) {
         return false;
@@ -346,17 +346,17 @@ bool ADXL372class::detectFifoAxisOrder(const TRIPLET *samples, uint16_t sample_c
     return true;
 }
 
-bool ADXL372class::isFifoAxisOrderDetected() const
+bool ADXL371class::isFifoAxisOrderDetected() const
 {
     return m_fifoAxisOrder != FifoAxisOrder::UNKNOWN;
 }
 
-FifoAxisOrder ADXL372class::getFifoAxisOrder() const
+FifoAxisOrder ADXL371class::getFifoAxisOrder() const
 {
     return m_fifoAxisOrder;
 }
 
-bool ADXL372class::readFifoData(TRIPLET *samples)
+bool ADXL371class::readFifoData(TRIPLET *samples)
 {
     if (samples == nullptr || m_sampleSize < 6) {
         return false;
@@ -428,7 +428,7 @@ bool ADXL372class::readFifoData(TRIPLET *samples)
     return true;
 }
 
-void ADXL372class::setFifoSamples(int sampleSize)
+void ADXL371class::setFifoSamples(int sampleSize)
 {
     checkStandbyMode();
     if (sampleSize < 0) {
@@ -456,41 +456,41 @@ void ADXL372class::setFifoSamples(int sampleSize)
     );
 }
 
-void ADXL372class::setFifoMode(FifoMode mode)
+void ADXL371class::setFifoMode(FifoMode mode)
 {
     checkStandbyMode();
     byte modeShifted = mode << 1; // starts from bit 1 in register
     updateRegister(FIFO_CTL, modeShifted, FIFO_MODE_MASK);
 }
 
-void ADXL372class::setFifoFormat(FifoFormat format)
+void ADXL371class::setFifoFormat(FifoFormat format)
 {
     checkStandbyMode();
     byte formatShifted = format << 3; // starts from bit 3 in register
     updateRegister(FIFO_CTL, formatShifted, FIFO_FORMAT_MASK);
 }
 
-void ADXL372class::selectInt1Function(InterruptFunction function)
+void ADXL371class::selectInt1Function(InterruptFunction function)
 {
     writeRegister(INT1_MAP, function);
 }
 
-void ADXL372class::selectInt1Functions(uint8_t function)
+void ADXL371class::selectInt1Functions(uint8_t function)
 {
     writeRegister(INT1_MAP, function);
 }
 
-void ADXL372class::selectInt2Function(InterruptFunction function)
+void ADXL371class::selectInt2Function(InterruptFunction function)
 {
     writeRegister(INT2_MAP, function);
 }
 
-void ADXL372class::selectInt2Functions(uint8_t function)
+void ADXL371class::selectInt2Functions(uint8_t function)
 {
     writeRegister(INT2_MAP, function);
 }
 
-void ADXL372class::setOdr(Odr odr)
+void ADXL371class::setOdr(Odr odr)
 {
     int currentBandwidth = readRegister(MEASURE) & 0b00000111; // Get only the bandwidth bits
     if ((int)odr < currentBandwidth)
@@ -501,24 +501,24 @@ void ADXL372class::setOdr(Odr odr)
     updateRegister(TIMING, odrShifted, ODR_MASK);
 }
 
-void ADXL372class::setWakeUpRate(WakeUpRate wur)
+void ADXL371class::setWakeUpRate(WakeUpRate wur)
 {
     byte wurShifted = wur << 2; // wur bits start from bit 2
     updateRegister(TIMING, wurShifted, WAKEUP_RATE_MASK);
 }
 
-void ADXL372class::enableExternalClock(bool isEnabled)
+void ADXL371class::enableExternalClock(bool isEnabled)
 {
     byte valueShifted = isEnabled << 1; // bit 1 in register
     updateRegister(TIMING, valueShifted, EXT_CLK_MASK);
 }
 
-void ADXL372class::enableExternalTrigger(bool isEnabled)
+void ADXL371class::enableExternalTrigger(bool isEnabled)
 {
     updateRegister(TIMING, isEnabled, EXT_SYNC_MASK);
 }
 
-void ADXL372class::setBandwidth(Bandwidth bandwidth)
+void ADXL371class::setBandwidth(Bandwidth bandwidth)
 {
     int currentOdr = (readRegister(TIMING) & 0b11100000) >> 5; // Get only the ODR bits
     if ((int)bandwidth > currentOdr)
@@ -528,13 +528,13 @@ void ADXL372class::setBandwidth(Bandwidth bandwidth)
     updateRegister(MEASURE, bandwidth, BANDWIDTH_MASK);
 }
 
-void ADXL372class::enableLowNoiseOperation(bool isEnabled)
+void ADXL371class::enableLowNoiseOperation(bool isEnabled)
 {
     byte valueShifted = isEnabled << 3; // bit 3 in register
     updateRegister(MEASURE, valueShifted, LOW_NOISE_MASK);
 }
 
-void ADXL372class::setLinkLoopActivityProcessing(LinkLoop activityProcessing)
+void ADXL371class::setLinkLoopActivityProcessing(LinkLoop activityProcessing)
 {
     checkStandbyMode();
     if (activityProcessing == LINKED || activityProcessing == LOOPED)
@@ -550,42 +550,42 @@ void ADXL372class::setLinkLoopActivityProcessing(LinkLoop activityProcessing)
     updateRegister(MEASURE, valueShifted, LINKLOOP_MASK);
 }
 
-void ADXL372class::enableAutosleep(bool isEnabled)
+void ADXL371class::enableAutosleep(bool isEnabled)
 {
     byte valueShifted = isEnabled << 6; // bit 6 in register
     updateRegister(MEASURE, valueShifted, AUTOSLEEP_MASK);
 }
 
-void ADXL372class::setOperatingMode(OperatingMode opMode)
+void ADXL371class::setOperatingMode(OperatingMode opMode)
 {
     updateRegister(POWER_CTL, opMode, MODE_MASK);
 }
 
-void ADXL372class::disableHighPassFilter(bool isDisabled)
+void ADXL371class::disableHighPassFilter(bool isDisabled)
 {
     byte valueShifted = isDisabled << 2; // bit 2 in register
     updateRegister(POWER_CTL, valueShifted, HPF_DISABLE_MASK);
 }
 
-void ADXL372class::disableLowPassFilter(bool isDisabled)
+void ADXL371class::disableLowPassFilter(bool isDisabled)
 {
     byte valueShifted = isDisabled << 3; // bit 3 in register
     updateRegister(POWER_CTL, valueShifted, LPF_DISABLE_MASK);
 }
 
-void ADXL372class::setFilterSettling(FilterSettlingPeriod filterSettling)
+void ADXL371class::setFilterSettling(FilterSettlingPeriod filterSettling)
 {
     byte valueShifted = filterSettling << 4; // bit 4 in register
     updateRegister(POWER_CTL, valueShifted, FILTER_SETTLE_MASK);
 }
 
-void ADXL372class::setInstantOnThreshold(InstantOnThreshold threshold)
+void ADXL371class::setInstantOnThreshold(InstantOnThreshold threshold)
 {
     byte valueShifted = threshold << 5; // bit 5 in register
     updateRegister(POWER_CTL, valueShifted, INSTANT_ON_THRESH_MASK);
 }
 
-bool ADXL372class::checkStandbyMode()
+bool ADXL371class::checkStandbyMode()
 {
     byte mode = readRegister(POWER_CTL);
     mode &= 0x03;
@@ -598,7 +598,7 @@ bool ADXL372class::checkStandbyMode()
     return true;
 }
 
-int ADXL372class::convertOffsetValue(float offset) {
+int ADXL371class::convertOffsetValue(float offset) {
     if(offset < -60.0f || offset > 52.5f){
         Serial.println("WARNING: Offset value can only be set to between -60 and 52.5. Try again");
         return 0;
@@ -615,7 +615,7 @@ int ADXL372class::convertOffsetValue(float offset) {
     return mappedOffset;
 }
 
-uint8_t ADXL372class::readRegister(byte regAddress)
+uint8_t ADXL371class::readRegister(byte regAddress)
 {
     select();
 
@@ -627,7 +627,7 @@ uint8_t ADXL372class::readRegister(byte regAddress)
     return value;
 }
 
-void ADXL372class::readMultipleRegisters(byte regAddress, uint8_t *data, uint16_t count)
+void ADXL371class::readMultipleRegisters(byte regAddress, uint8_t *data, uint16_t count)
 {
     select();
 
@@ -641,7 +641,7 @@ void ADXL372class::readMultipleRegisters(byte regAddress, uint8_t *data, uint16_
     deselect();
 }
 
-void ADXL372class::writeRegister(byte regAddress, uint8_t value)
+void ADXL371class::writeRegister(byte regAddress, uint8_t value)
 {
     select();
 
@@ -652,7 +652,7 @@ void ADXL372class::writeRegister(byte regAddress, uint8_t value)
     deselect();
 }
 
-void ADXL372class::updateRegister(byte regAddress, uint8_t value, byte preserveMask)
+void ADXL371class::updateRegister(byte regAddress, uint8_t value, byte preserveMask)
 {
     // Need to use bitmasks to only change the desired bits in the registers
     uint8_t current = readRegister(regAddress);
@@ -661,7 +661,7 @@ void ADXL372class::updateRegister(byte regAddress, uint8_t value, byte preserveM
     writeRegister(regAddress, current);
 }
 
-bool ADXL372class::selfTest()
+bool ADXL371class::selfTest()
 {
     // const uint32_t settling_ms = 1000 / currentODR * 4;
     // Self test procedure (Page 27 in datasheet)

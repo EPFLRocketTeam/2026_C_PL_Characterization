@@ -7,22 +7,22 @@
 #include "environment.h"
 #include "accelerometer.h"
 
-ADXL372class accel_main(CS_PIN_Accel_Main, SPI1);
+ADXL371class adxl_main(CS_PIN_ADXL_Main, SPI);
 Adafruit_BME280 bme_main(CS_PIN_BME_Main, &SPI);
 
-ADXL372class accel_sat_1(CS_PIN_Accel_Sat_1, SPI);
-Adafruit_BME280 bme_sat_1(CS_PIN_BME_Sat_1, &SPI);
+ADXL371class adxl_sat(CS_PIN_ADXL_Sat, SPI1);
+Adafruit_BME280 bme_sat(CS_PIN_BME_Sat, &SPI1);
 
-ADXL372class accel_sat_2(CS_PIN_Accel_Sat_2, SPI1);
 
 uint32_t last_bme_read = 0;
 bool is_logging = true;
 
 bool has_adxl_main = false;
-bool has_adxl_sat_1 = false;
-bool has_adxl_sat_2 = false;
+bool has_adxl_sat  = false;
+bool has_lsm_main  = false;
+bool has_lsm_sat   = false;
 bool has_bme_main  = false;
-bool has_bme_sat_1 = false;
+bool has_bme_sat   = false;
 
 volatile bool pfm_triggered = false;
 
@@ -36,11 +36,14 @@ FASTRUN void power_fail_ISR() {
 void test_miso1_idle_drive()
 {
     // Every device on SPI1 must be deselected.
-	pinMode(CS_PIN_Accel_Main, OUTPUT);
-	pinMode(CS_PIN_Accel_Sat_2, OUTPUT);
+	pinMode(CS_PIN_ADXL_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_ADXL_Sat, HIGH);
 
-    digitalWriteFast(CS_PIN_Accel_Main, HIGH);
-    digitalWriteFast(CS_PIN_Accel_Sat_2, HIGH);
+	pinMode(CS_PIN_LSM_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_LSM_Sat, HIGH);
+
+	pinMode(CS_PIN_BME_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_BME_Sat, HIGH);
 
     delay(10);
 
@@ -77,11 +80,14 @@ void setup() {
 	setup_buzzer();
 
 	// Setup SPI CS pins (deselect all sensors)
-	digitalWrite(CS_PIN_Accel_Main, HIGH); pinMode(CS_PIN_Accel_Main, OUTPUT); 
-    digitalWrite(CS_PIN_Accel_Sat_1, HIGH); pinMode(CS_PIN_Accel_Sat_1, OUTPUT); 
-    digitalWrite(CS_PIN_Accel_Sat_2, HIGH); pinMode(CS_PIN_Accel_Sat_2, OUTPUT); 
+	digitalWrite(CS_PIN_ADXL_Main, HIGH); pinMode(CS_PIN_ADXL_Main, OUTPUT); 
+    digitalWrite(CS_PIN_ADXL_Sat, HIGH); pinMode(CS_PIN_ADXL_Sat, OUTPUT); 
+
+	digitalWrite(CS_PIN_LSM_Main, HIGH); pinMode(CS_PIN_LSM_Main, OUTPUT); 
+    digitalWrite(CS_PIN_LSM_Sat, HIGH); pinMode(CS_PIN_LSM_Sat, OUTPUT);
+
     digitalWrite(CS_PIN_BME_Main, HIGH); pinMode(CS_PIN_BME_Main, OUTPUT); 
-    digitalWrite(CS_PIN_BME_Sat_1, HIGH); pinMode(CS_PIN_BME_Sat_1, OUTPUT); 
+    digitalWrite(CS_PIN_BME_Sat, HIGH); pinMode(CS_PIN_BME_Sat, OUTPUT); 
 	
 	delay(5);
 
@@ -90,22 +96,16 @@ void setup() {
 
 	// Setup accelerometers
 	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Main");
+	Serial.println("Connecting ADXL371 Main");
 	#endif
-	has_adxl_main = setup_adxl372(&accel_main);
+	has_adxl_main = setup_adxl371(&adxl_main);
 	conditional_beeps(has_adxl_main, 100, 2, 200, 1);
 
 	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Sat 1");
+	Serial.println("Connecting ADXL371 Sat");
 	#endif
-	has_adxl_sat_1 = setup_adxl372(&accel_sat_1);
-	conditional_beeps(has_adxl_sat_1, 100, 2, 200, 1);
-
-	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Sat 2");
-	#endif
-	has_adxl_sat_2 = setup_adxl372(&accel_sat_2);
-	conditional_beeps(has_adxl_sat_2, 100, 2, 200, 1);
+	has_adxl_sat = setup_adxl371(&adxl_sat);
+	conditional_beeps(has_adxl_sat, 100, 2, 200, 1);
 	
 	delay(5);
 
@@ -117,20 +117,19 @@ void setup() {
 	conditional_beeps(has_bme_main, 100, 2, 200, 1);
 
 	#ifdef DEBUG_
-	Serial.println("Connecting BME280 Sat 1");
+	Serial.println("Connecting BME280 Sat");
 	#endif
-	has_bme_sat_1 = setup_bme(&bme_sat_1);
-	conditional_beeps(has_bme_sat_1, 100, 2, 200, 1);
+	has_bme_sat = setup_bme(&bme_sat);
+	conditional_beeps(has_bme_sat, 100, 2, 200, 1);
 
 	delay(5);
 
 	#ifdef DEBUG_
-	if (has_adxl_main) Serial.println("ADXL372 Main Connected");
-	if (has_adxl_sat_1) Serial.println("ADXL372 Sat 1 Connected");
-	if (has_adxl_sat_2) Serial.println("ADXL372 Sat 2 Connected");
+	if (has_adxl_main) Serial.println("ADXL371 Main Connected");
+	if (has_adxl_sat) Serial.println("ADXL371 Sat Connected");
 	
 	if (has_bme_main) Serial.println("BME280 Main Connected");
-	if (has_bme_sat_1) Serial.println("BME280 Sat 1 Connected");
+	if (has_bme_sat) Serial.println("BME280 Sat Connected");
 	#endif
 
 	// Setup microphones
@@ -160,11 +159,9 @@ void setup() {
 	// Setup success beeps
 	beeps(100, 3);
 
-	if (has_adxl_main) start_adxl372(&accel_main, INT_PIN_Accel_Main, accel_main_ISR);
+	if (has_adxl_main) start_adxl371(&adxl_main, INT_PIN_ADXL_Main, adxl_main_ISR);
+    if (has_adxl_sat) start_adxl371(&adxl_sat, INT_PIN_ADXL_Sat, adxl_sat_ISR);
 
-    if (has_adxl_sat_1) start_adxl372(&accel_sat_1, INT_PIN_Accel_Sat_1, accel_sat_1_ISR);
-
-    if (has_adxl_sat_2) start_adxl372(&accel_sat_2, INT_PIN_Accel_Sat_2, accel_sat_2_ISR);
 }
 
 void loop() {
@@ -230,17 +227,13 @@ void loop() {
 	// Normal operation (continuous logging)
 	if (is_logging) {
 		// Check Accelerometer ISR Flags
-		if (has_adxl_main && accel_main_int) {
-			log_adxl372_fifo(&accel_main, accel_main_timestamp, ID_ADXL372_MAIN);
-			accel_main_int = false;
+		if (has_adxl_main && adxl_main_int) {
+			log_adxl371_fifo(&adxl_main, adxl_main_timestamp, ID_ADXL371_MAIN);
+			adxl_main_int = false;
 		}
-		if (has_adxl_sat_1 && accel_sat_1_int) {
-			log_adxl372_fifo(&accel_sat_1, accel_sat_1_timestamp, ID_ADXL372_SAT_1);
-			accel_sat_1_int = false;
-		}
-		if (has_adxl_sat_2 && accel_sat_2_int) {
-			log_adxl372_fifo(&accel_sat_2, accel_sat_2_timestamp, ID_ADXL372_SAT_2);
-			accel_sat_2_int = false;
+		if (has_adxl_sat && adxl_sat_int) {
+			log_adxl371_fifo(&adxl_sat, adxl_sat_timestamp, ID_ADXL371_SAT);
+			adxl_sat_int = false;
 		}
 
 		// Read Microphones
@@ -249,7 +242,7 @@ void loop() {
 		// Read BME280s at 10 Hz (every 100ms) without blocking
 		if (millis() - last_bme_read >= 100) {
 			if (has_bme_main) log_bme_values(&bme_main, ID_BME280_MAIN);
-			if (has_bme_sat_1) log_bme_values(&bme_sat_1, ID_BME280_SAT_1);
+			if (has_bme_sat) log_bme_values(&bme_sat, ID_BME280_SAT);
 			last_bme_read = millis();
 		}
 
@@ -276,7 +269,7 @@ void loop() {
 	if (jumper_placed || reached_file_end()) {
 		is_logging = false;
 
-		print_adxl372_diagnostics();
+		print_adxl371_diagnostics();
 
 		#ifdef DEBUG_
 		Serial.println("Safe shutdown triggered.");

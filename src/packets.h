@@ -2,30 +2,37 @@
 
 #include <stdint.h>
 
-#include "ADXL372.h"
+#include "ADXL371.h"
 
 enum SensorID : uint8_t {
     ID_ADXL371_MAIN  = 0x01,
     ID_ADXL371_SAT   = 0x02,
-    ID_BME280_MAIN   = 0x03,
-    ID_BME280_SAT    = 0x04,
-    ID_MIC           = 0x05,
-    PFM              = 0x06,
+    ID_LSM6_MAIN     = 0x03,
+    ID_LSM6_SAT      = 0x04,
+    ID_BME280_MAIN   = 0x05,
+    ID_BME280_SAT    = 0x06,
+    ID_MIC           = 0x07,
+    PFM              = 0x08,
     EOF_             = 0xFF
 };
 
 struct CHUNK_HEADER {
   uint16_t sync_word;   // Magic number to find the start of a packet (e.g., 0xAAAA)
-  uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL372_MAIN)
+  uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
   uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
   uint32_t payload_len; // How many bytes are in the attached buffer
 } __attribute__((packed));
 
 // Accelerometer
-constexpr uint16_t ADXL372_PACKET_SAMPLES = 83;
-struct ADXL372_PACKET {
+constexpr uint16_t ADXL371_PACKET_SAMPLES = 83;
+struct ADXL371_PACKET {
   CHUNK_HEADER header;
-  TRIPLET data[ADXL372_PACKET_SAMPLES];  // x, y, z acceleration
+  TRIPLET data[ADXL371_PACKET_SAMPLES];  // x, y, z acceleration
+} __attribute__((packed));
+
+struct LSM6_PACKET {
+    CHUNK_HEADER header;
+    /*...*/
 } __attribute__((packed));
 
 // Environment

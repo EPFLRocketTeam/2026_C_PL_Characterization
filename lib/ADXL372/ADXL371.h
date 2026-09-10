@@ -116,7 +116,7 @@
 #define USER_ST_MASK 0xFB
 
 // Accelerometer Constants
-#define SPI_SPEED 10000000 // ADXL372 supports up to 10MHz in SCLK frequency
+#define SPI_SPEED 10000000 // ADXL371 supports up to 10MHz in SCLK frequency
 #define SCALE_FACTOR 100   // mg per LSB
 #define MG_TO_G 0.001      // g per mg
 
@@ -231,11 +231,11 @@ struct TRIPLET {
     int16_t z;
 } __attribute__((packed));
 
-class ADXL372class
+class ADXL371class
 {
 public:
-    ADXL372class(int csPinInput, SPIClass &spi = SPI);
-    virtual ~ADXL372class();
+    ADXL371class(int csPinInput, SPIClass &spi = SPI);
+    virtual ~ADXL371class();
 
     void begin();
     void begin(uint32_t spiClockSpeed);

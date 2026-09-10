@@ -2,7 +2,7 @@
 
 #include "Arduino.h"
 
-#define BUZZER_PIN 6
+#define BUZZER_PIN 3
 
 void setup_buzzer();
 void beep(uint32_t delay_ms);
