@@ -5,13 +5,12 @@
 #include "ADXL372.h"
 
 enum SensorID : uint8_t {
-    ID_ADXL372_MAIN  = 0x01,
-    ID_ADXL372_SAT_1 = 0x02,
-    ID_ADXL372_SAT_2 = 0x03,
-    ID_BME280_MAIN   = 0x04,
-    ID_BME280_SAT_1  = 0x05,
-    ID_MIC           = 0x06,
-    PFM              = 0x07,
+    ID_ADXL371_MAIN  = 0x01,
+    ID_ADXL371_SAT   = 0x02,
+    ID_BME280_MAIN   = 0x03,
+    ID_BME280_SAT    = 0x04,
+    ID_MIC           = 0x05,
+    PFM              = 0x06,
     EOF_             = 0xFF
 };
 
@@ -26,7 +25,7 @@ struct CHUNK_HEADER {
 constexpr uint16_t ADXL372_PACKET_SAMPLES = 83;
 struct ADXL372_PACKET {
   CHUNK_HEADER header;
-  TRIPLET data[ADXL372_PACKET_SAMPLES];
+  TRIPLET data[ADXL372_PACKET_SAMPLES];  // x, y, z acceleration
 } __attribute__((packed));
 
 // Environment
@@ -46,7 +45,8 @@ struct BME280_PACKET {
 
 struct Mic_PACKET {
     CHUNK_HEADER header;
-    int16_t audio_samples[MIC_CHUNK_SIZE]; 
+    int16_t left_samples[MIC_CHUNK_SIZE];   // Left micro signal
+    int16_t right_samples[MIC_CHUNK_SIZE];  // Right micro signal
 } __attribute__((packed));
 
 
