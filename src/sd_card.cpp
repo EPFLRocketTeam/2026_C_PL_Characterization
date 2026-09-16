@@ -49,7 +49,7 @@ bool setup_file() {
 bool close_sd(enum END_STATES end) {
     // --- INJECT TERMINATION PACKET ---
     CHUNK_HEADER end_header;
-    end_header.sync_word = 0xAAAA;
+    end_header.sync_word = 0xAA;
     if (end == PFM_END) {
         end_header.sensor_type = PFM;
     } else {

@@ -17,20 +17,30 @@ enum SensorID : uint8_t {
 };
 
 struct CHUNK_HEADER {
-  uint16_t sync_word;   // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
+  uint8_t sync_word;    // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
   uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
   uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
-  uint32_t payload_len; // How many bytes are in the attached buffer
+  size_t payload_len;   // How many bytes are in the attached buffer
 } __attribute__((packed));
 
 // Accelerometer
-constexpr uint16_t ADXL371_PACKET_SAMPLES = 83;  // Can change
+//==============================================================
+// ADXL371 FIFO word : 2 bytes -> one int16_t sample
+//==============================================================
+constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO samples (x,y,z) ==> 300 FIFO samples expected
 struct ADXL371_PACKET {
   CHUNK_HEADER header;
   TRIPLET data[ADXL371_PACKET_SAMPLES];  // x, y, z acceleration
 } __attribute__((packed));
+
 //==============================================================
-constexpr uint16_t LSM_PACKET_SAMPLES = 50;  // Can change
+// LSM6DOS32 FIFO word : 7 bytes
+//                        - 1 bytes Tag
+//                        - 2 bytes X-axis measure
+//                        - 2 bytes Y-axis
+//                        - 2 byets Z-axis
+//==============================================================
+constexpr uint8_t LSM_PACKET_SAMPLES = 150;  // One LSM_packet stores 2 FIFO words ==> 300 FIFO words expected
 struct LSM_FIFO_DATA {
     int16_t Ax;
     int16_t Ay;
@@ -40,12 +50,12 @@ struct LSM_FIFO_DATA {
     int16_t Wz;
 } __attribute__((packed));
 
-struct LSM6_PACKET {
+struct LSM_PACKET {
     CHUNK_HEADER header;
     LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
     int16_t tmp;
 } __attribute__((packed));
-//==============================================================
+
 // Environment
 struct BME280_DATA {
     float temperature; // Celsius

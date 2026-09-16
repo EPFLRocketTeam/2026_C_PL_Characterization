@@ -13,7 +13,7 @@ bool setup_microphones() {
     AudioMemory(AUDIO_MEMORY_BLOCKS);
 
     // Setup static header info
-    mic_packet.header.sync_word = 0xAAAA;
+    mic_packet.header.sync_word = 0xAA;
     mic_packet.header.sensor_type = ID_MIC;
     mic_packet.header.payload_len = sizeof(mic_packet.left_samples) + sizeof(mic_packet.right_samples);
 

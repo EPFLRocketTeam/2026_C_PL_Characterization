@@ -13,6 +13,7 @@ volatile uint32_t lsm_main_timestamp = 0;
 volatile uint32_t lsm_sat_timestamp = 0;
 
 ADXL371_PACKET adxl371_packet;
+LSM_PACKET lsm_packet;
 
 uint32_t adxl371_overruns[3] = {0, 0, 0};
 uint32_t adxl371_invalid_blocks[3] = {0, 0, 0};
@@ -58,9 +59,11 @@ FASTRUN void lsm_sat_ISR() {
 // ADXL371
 //=================================================
 bool setup_adxl371(ADXL371class *accel) {
-    /*
-    * Initializes an ADXL371 accelerometer and performs a self-test
-    */
+    if (accel == nullptr) return false;
+
+    adxl371_packet.header.sync_word = 0xAA;
+    adxl371_packet.header.payload_len = sizeof(adxl371_packet.data);
+
     accel->begin();
     
     if (!accel->isConnected()) {
@@ -133,7 +136,7 @@ bool setup_adxl371(ADXL371class *accel) {
     accel->setOperatingMode(STANDBY);
     accel->setFifoMode(STREAM);
 
-    adxl371_packet.header.sync_word = 0xAAAA;
+    adxl371_packet.header.sync_word = 0xAA;
     adxl371_packet.header.payload_len = sizeof(adxl371_packet.data);
 
     return true;
@@ -224,6 +227,9 @@ void print_adxl371_diagnostics() {
 bool setup_lsm(LSM6DSO32Sensor *accel) {
     if (accel == nullptr) return false;
 
+    lsm_packet.header.sync_word = 0xAA;
+    lsm_packet.header.payload_len = sizeof(lsm_packet.tmp) + sizeof(lsm_packet.data);
+
     if (accel->begin() != LSM6DSO32_OK) {
         #ifdef DEBUG_
         Serial.println("LSM6DSO32 initialization failed or sensor missing.");
@@ -237,20 +243,19 @@ bool setup_lsm(LSM6DSO32Sensor *accel) {
     
     // Setup LSM with highest sensibility & measure logging
     // Accel
-    if (accel->Set_X_FS(LSM6DSO32_32g) != LSM6DSO32_OK) return false;
-    if (accel->Set_X_ODR(LSM6DSO32_XL_ODR_6667Hz_HIGH_PERF) != LSM6DSO32_OK) return false;
+    if (accel->Set_X_FS(32) != LSM6DSO32_OK) return false;
+    if (accel->Set_X_ODR(6667.0) != LSM6DSO32_OK) return false;
 
     // Gyro
-    if (accel->Set_G_FS(LSM6DSO32_2000dps) != LSM6DSO32_OK) return false;
-    if (accel->Set_G_ODR(LSM6DSO32_GY_ODR_6667Hz_HIGH_PERF) != LSM6DSO32_OK) return false;
+    if (accel->Set_G_FS(2000) != LSM6DSO32_OK) return false;
+    if (accel->Set_G_ODR(6667.0) != LSM6DSO32_OK) return false;
 
     // FIFO config
-    accel->Set_FIFO_X_BDR(LSM6DSO32_XL_BATCHED_AT_6667Hz);    // Logging rate
-    accel->Set_FIFO_G_BDR(LSM6DSO32_GY_BATCHED_AT_6667Hz);
-    accel->Set_FIFO_Watermark_Level(300);                     // Watermark
-    accel->Set_FIFO_INT1_FIFO_Full(LSM6DSO32_FIFO_MODE);      // Interrupt
-    accel->Set_FIFO_Stop_On_Fth(1);                           // Avoid FIFO overwritting
-    accel->Set_FIFO_Mode(LSM6DSO32_STREAM_TO_FIFO_MODE);
+    accel->Set_FIFO_X_BDR(6667.0);              // Logging rate
+    accel->Set_FIFO_G_BDR(6667.0);
+    accel->Set_FIFO_Watermark_Level(300);       // Watermark
+    accel->Set_FIFO_Stop_On_Fth(1);             // Stop writting when watermark reached
+    accel->Set_FIFO_Mode(LSM6DSO32_FIFO_MODE);  // Set FIFO mode 
 
     // Set int1 to trigger on watermark threshold 
     uint8_t int1_ctrl;
@@ -329,6 +334,63 @@ void print_lsm_temperature(LSM6DSO32Sensor *accel) {
     Serial.print("LSM Temperature [C] : ");
     Serial.println(temperature);
     #endif
+}
+
+void log_lsm_fifo(LSM6DSO32Sensor *accel, uint32_t timestamp, uint8_t sensor_id) {
+    if (accel == nullptr) return;
+    lsm_packet.header.sensor_type = sensor_id;  // Add sensor id
+    lsm_packet.header.timestamp = timestamp;    // Add timestamp
+
+    lsm_packet.tmp = getRawTmp(accel);          // Add raw temp measure
+
+    uint16_t number_samples;
+    accel->Get_FIFO_Num_Samples(&number_samples);  // Get unread measure number (300 expected)
+
+    #ifdef DEBUG_
+    Serial.println("FIFO samples number : ");
+    Serial.print(number_samples);
+    #endif
+
+    uint8_t tag;        // sensor tag
+    uint8_t data[6];    // FIFO payload buffer
+
+    uint8_t gyr_idx = 0;  
+    uint8_t acc_idx = 0;
+
+    for(size_t i=0; i<number_samples; i++) {
+        accel->Get_FIFO_Tag(&tag);      // Get last FIFO tag
+        accel->Get_FIFO_Data(data);     // Get last FIFO data 
+        
+        // Save data into lsm_packet
+        switch (tag) {
+        case 1:
+            if(gyr_idx < LSM_PACKET_SAMPLES) {
+                lsm_packet.data[gyr_idx].Wx = (int16_t)((uint16_t)data[1] << 8 | data[0]);
+                lsm_packet.data[gyr_idx].Wy = (int16_t)((uint16_t)data[3] << 8 | data[2]);
+                lsm_packet.data[gyr_idx].Wz = (int16_t)((uint16_t)data[5] << 8 | data[4]);
+                gyr_idx++;
+            }
+            break;
+        
+        case 2:
+            if(acc_idx < LSM_PACKET_SAMPLES) {
+                lsm_packet.data[acc_idx].Ax = (int16_t)((uint16_t)data[1] << 8 | data[0]);
+                lsm_packet.data[acc_idx].Ay = (int16_t)((uint16_t)data[3] << 8 | data[2]);
+                lsm_packet.data[acc_idx].Az = (int16_t)((uint16_t)data[5] << 8 | data[4]);
+                acc_idx++;
+            }
+            break;
+        }
+    }
+
+    #ifdef DEBUG_
+    Serial.println("Acc samples : ");
+    Serial.print(acc_idx);
+    Serial.println("Gyr samples : ");
+    Serial.print(gyr_idx);
+    #endif
+
+    ring_buffer_push((uint8_t*)&lsm_packet, sizeof(lsm_packet));
 }
 
 void print_lsm_diagnostics(LSM6DSO32Sensor *accel) {

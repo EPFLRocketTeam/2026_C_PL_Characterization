@@ -50,5 +50,5 @@ int16_t gatRawTmp(LSM6DSO32Sensor *accel);
 void print_lsm_accel(LSM6DSO32Sensor *accel);
 void print_lsm_gyro(LSM6DSO32Sensor *accel);
 void print_lsm_temperature(LSM6DSO32Sensor *accel);
-void log_lsm_data(LSM6DSO32Sensor *accel,uint32_t timestamp,uint8_t sensor_id);
+void log_lsm_data(LSM6DSO32Sensor *accel, uint32_t timestamp, uint8_t sensor_id);
 void print_lsm_diagnostics(LSM6DSO32Sensor *accel);
