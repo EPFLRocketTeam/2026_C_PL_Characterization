@@ -113,7 +113,7 @@
 
 #define ST_MASK 0xFE // Self test
 #define ST_DONE_MASK 0xFD
-#define USER_ST_MASK 0xFB
+// #define USER_ST_MASK 0xFB
 
 // Accelerometer Constants
 #define SPI_SPEED 10000000 // ADXL371 supports up to 10MHz in SCLK frequency
@@ -156,34 +156,37 @@ enum class FifoAxisOrder : uint8_t
     UNKNOWN = 255
 };
 
+// Change for 371
 enum Odr
 {
-    ODR_400Hz = 0b000,
-    ODR_800Hz = 0b001,
-    ODR_1600Hz = 0b010,
-    ODR_3200Hz = 0b011,
-    ODR_6400Hz = 0b100
+    ODR_320Hz  = 0b000,
+    ODR_640Hz  = 0b001,
+    ODR_1280Hz = 0b010,
+    ODR_2560Hz = 0b011,
+    ODR_5120Hz = 0b100
 };
 
+// Change for 371
 enum WakeUpRate
 {
-    WUR_52ms = 0b000,
-    WUR_104ms = 0b001,
-    WUR_208ms = 0b010,
-    WUR_512ms = 0b011,
-    WUR_2048ms = 0b100,
-    WUR_4096ms = 0b101,
-    WUR_8192ms = 0b110,
-    WUR_24576ms = 0b111,
+    WUR_65ms    = 0b000,
+    WUR_130ms   = 0b001,
+    WUR_260ms   = 0b010,
+    WUR_640ms   = 0b011,
+    WUR_2560ms  = 0b100,
+    WUR_5120ms  = 0b101,
+    WUR_10240ms = 0b110,
+    WUR_30720ms = 0b111
 };
 
+// Change for 371
 enum Bandwidth
 {
-    BW_200Hz = 0b000,
-    BW_400Hz = 0b001,
-    BW_800Hz = 0b010,
-    BW_1600Hz = 0b011,
-    BW_3200Hz = 0b100
+    BW_160Hz  = 0b000,
+    BW_320Hz  = 0b001,
+    BW_640Hz  = 0b010,
+    BW_1280Hz = 0b011,
+    BW_2560Hz = 0b100
 };
 
 enum LinkLoop
@@ -201,10 +204,11 @@ enum OperatingMode
     FULL_BANDWIDTH = 0b11
 };
 
+// Change for 371
 enum FilterSettlingPeriod
 {
-    FSP_370ms = 0,
-    FSP_16ms = 1
+    FSP_462_5ms = 0,
+    FSP_4_OVER_ODR = 1
 };
 
 enum InstantOnThreshold
@@ -235,7 +239,7 @@ class ADXL371class
 {
 public:
     ADXL371class(int csPinInput, SPIClass &spi = SPI);
-    virtual ~ADXL371class();
+    ~ADXL371class() = default;
 
     void begin();
     void begin(uint32_t spiClockSpeed);
@@ -316,6 +320,7 @@ private:
     void readMultipleRegisters(byte regAddress, uint8_t *data, uint16_t count);
     void writeRegister(byte regAddress, uint8_t value);
     void updateRegister(byte regAddress, uint8_t value, byte mask);
+
     inline void select()
     {
         m_spi->beginTransaction(m_spiSettings);

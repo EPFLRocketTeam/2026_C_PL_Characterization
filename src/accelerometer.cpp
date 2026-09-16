@@ -1,25 +1,21 @@
 #include "accelerometer.h"
 
-volatile bool accel_main_int = false;
-volatile bool accel_sat_int = false;
+volatile bool adxl_main_int = false;
+volatile bool adxl_sat_int = false;
 
-volatile uint32_t accel_main_timestamp = 0;
-volatile uint32_t accel_sat_timestamp = 0;
+volatile uint32_t adxl_main_timestamp = 0;
+volatile uint32_t adxl_sat_timestamp = 0;
+
+volatile bool lsm_main_int = false;
+volatile bool lsm_sat_int = false;
+
+volatile uint32_t lsm_main_timestamp = 0;
+volatile uint32_t lsm_sat_timestamp = 0;
 
 ADXL371_PACKET adxl371_packet;
 
 uint32_t adxl371_overruns[3] = {0, 0, 0};
 uint32_t adxl371_invalid_blocks[3] = {0, 0, 0};
-
-FASTRUN void adxl_main_ISR() {
-    adxl_main_timestamp = micros();
-    adxl_main_int = true;
-}
-
-FASTRUN void adxl_sat_ISR() {
-    adxl_sat_timestamp = micros();
-    adxl_sat_int = true;
-}
 
 const char *fifo_order_name(FifoAxisOrder order) {
     if (order == FifoAxisOrder::YZX) return "YZX";
@@ -35,6 +31,32 @@ int sensor_index(uint8_t sensor_id) {
     return sensor_id - ID_ADXL371_MAIN;
 }
 
+//=================================================
+// ISRs
+//=================================================
+FASTRUN void adxl_main_ISR() {
+    adxl_main_timestamp = micros();
+    adxl_main_int = true;
+}
+
+FASTRUN void adxl_sat_ISR() {
+    adxl_sat_timestamp = micros();
+    adxl_sat_int = true;
+}
+
+FASTRUN void lsm_main_ISR() {
+    lsm_main_timestamp = micros();
+    lsm_main_int = true;
+}
+
+FASTRUN void lsm_sat_ISR() {
+    lsm_sat_timestamp = micros();
+    lsm_sat_int = true;
+}
+
+//=================================================
+// ADXL371
+//=================================================
 bool setup_adxl371(ADXL371class *accel) {
     /*
     * Initializes an ADXL371 accelerometer and performs a self-test
@@ -72,22 +94,22 @@ bool setup_adxl371(ADXL371class *accel) {
 
     accel->setOperatingMode(STANDBY);
 
-    accel->setOdr(ODR_6400Hz);              //output data rate
-    accel->setBandwidth(BW_3200Hz);
+    accel->setOdr(ODR_5120Hz);                  //output data rate
+    accel->setBandwidth(BW_1280Hz);             //low-pass filter cutoff frequency
     accel->enableLowNoiseOperation(true);
 
-    accel->disableHighPassFilter(true);
-    accel->disableLowPassFilter(true);
-    accel->setFilterSettling(FSP_16ms);
+    accel->disableHighPassFilter(true);         //keep low acceleration in signal
+    accel->disableLowPassFilter(false);         //filter to higher frequency (Nyquist-Shanon) 
+    accel->setFilterSettling(FSP_4_OVER_ODR);   //short settling time
 
-    accel->setFifoMode(FIFO_DISABLED);
-    accel->setFifoFormat(XYZ);
-    accel->setFifoSamples(255);
-    accel->selectInt1Function(FIFO_FULL);
-    
-    accel->setOperatingMode(FULL_BANDWIDTH);
+    accel->setFifoSamples(300);                 //set FIFO watermarks
+    accel->setFifoFormat(XYZ);                  //set data format
+    accel->setFifoMode(STREAM);                 //continious writing
 
-    delay(25); // Allow the 16 ms filter settling period to complete before collecting direct-register and FIFO means.
+    accel->selectInt1Function(FIFO_FULL);       //int1 setup (when watermarks reached)
+    accel->setOperatingMode(FULL_BANDWIDTH);     
+
+    delay(2*4/5120); // Allow filter settling period to complete before collecting direct-register and FIFO means.
 
     int32_t sum_x = 0;
     int32_t sum_y = 0;
@@ -193,5 +215,173 @@ void print_adxl371_diagnostics() {
         Serial.print(", invalid blocks=");
         Serial.println(adxl371_invalid_blocks[i]);
     }
+    #endif
+}
+
+//=================================================
+// LSM6DOS32
+//=================================================
+bool setup_lsm(LSM6DSO32Sensor *accel) {
+    if (accel == nullptr) return false;
+
+    if (accel->begin() != LSM6DSO32_OK) {
+        #ifdef DEBUG_
+        Serial.println("LSM6DSO32 initialization failed or sensor missing.");
+        #endif
+        return false;
+    }
+
+    #ifdef DEBUG_
+    Serial.println("LSM6DSO32 initialized successfully."); 
+    #endif
+    
+    // Setup LSM with highest sensibility & measure logging
+    // Accel
+    if (accel->Set_X_FS(LSM6DSO32_32g) != LSM6DSO32_OK) return false;
+    if (accel->Set_X_ODR(LSM6DSO32_XL_ODR_6667Hz_HIGH_PERF) != LSM6DSO32_OK) return false;
+
+    // Gyro
+    if (accel->Set_G_FS(LSM6DSO32_2000dps) != LSM6DSO32_OK) return false;
+    if (accel->Set_G_ODR(LSM6DSO32_GY_ODR_6667Hz_HIGH_PERF) != LSM6DSO32_OK) return false;
+
+    // FIFO config
+    accel->Set_FIFO_X_BDR(LSM6DSO32_XL_BATCHED_AT_6667Hz);    // Logging rate
+    accel->Set_FIFO_G_BDR(LSM6DSO32_GY_BATCHED_AT_6667Hz);
+    accel->Set_FIFO_Watermark_Level(300);                     // Watermark
+    accel->Set_FIFO_INT1_FIFO_Full(LSM6DSO32_FIFO_MODE);      // Interrupt
+    accel->Set_FIFO_Stop_On_Fth(1);                           // Avoid FIFO overwritting
+    accel->Set_FIFO_Mode(LSM6DSO32_STREAM_TO_FIFO_MODE);
+
+    // Set int1 to trigger on watermark threshold 
+    uint8_t int1_ctrl;
+    accel->Read_Reg(0x0D, &int1_ctrl);  
+    int1_ctrl |= (1 << 3);              // modify INT1_FIFO_TH
+    accel->Write_Reg(0x0D, int1_ctrl);
+
+    return true;
+}
+
+void start_lsm(LSM6DSO32Sensor *accel, uint8_t interrupt_pin, void (*isr)()) {
+    if (accel == nullptr || isr == nullptr) return;
+
+    // Start accelerometer & gyroscope
+    accel->Enable_X();
+    accel->Enable_G();
+
+    // Attach interrupt pin
+    pinMode(interrupt_pin, INPUT);
+    attachInterrupt(digitalPinToInterrupt(interrupt_pin), isr, RISING);
+}
+
+int16_t getRawTmp(LSM6DSO32Sensor *accel) {
+    uint8_t temp[2];
+
+    if (accel->IO_Read(temp, 0x20, 2) != 0)
+        return 0;
+
+    return (int16_t)(((uint16_t)temp[1] << 8) | temp[0]);
+}
+
+void print_lsm_accel(LSM6DSO32Sensor *accel) {
+    int32_t data[3];
+
+    if (accel->Get_X_Axes(data) != LSM6DSO32_OK) {
+        Serial.println("LSM6DSO32 acceleration read error");
+        return;
+    }
+
+    #ifdef DEBUG_
+    char line[64];
+
+    sprintf(line, "x: %f, y: %f, z: %f", 
+            data[0], 
+            data[1], 
+            data[2]);
+    Serial.println(line);
+    #endif
+}
+
+void print_lsm_gyro(LSM6DSO32Sensor *accel) {
+    int32_t data[3];
+
+    if (accel->Get_G_Axes(data) != LSM6DSO32_OK){
+        Serial.println("LSM6DSO32 gyroscope read error");
+        return;
+    }
+
+    #ifdef DEBUG_
+    char line[64];
+    // Note: Adafruit_LSM6DS returns values in m/s^2
+    sprintf(line, "Wx: %f, Wy: %f, Wz: %f", 
+            data[0], 
+            data[1], 
+            data[2]);
+    Serial.println(line);
+    #endif
+}
+
+void print_lsm_temperature(LSM6DSO32Sensor *accel) {
+
+    #ifdef DEBUG_
+    int16_t raw = getRawTmp(accel);
+    float temperature = 25.0f + ((float)raw / 256.0f);
+
+    Serial.print("LSM Temperature [C] : ");
+    Serial.println(temperature);
+    #endif
+}
+
+void print_lsm_diagnostics(LSM6DSO32Sensor *accel) {
+    uint8_t id;
+    float accel_odr;
+    float gyro_odr;
+    int32_t accel_fs;
+    int32_t gyro_fs;
+    uint16_t fifo_samples;
+    uint8_t fifo_full;
+
+    #ifdef DEBUG_
+    Serial.println("----- LSM6DSO32 diagnostics -----");
+
+    if (accel->ReadID(&id) == LSM6DSO32_OK) {
+        Serial.print("WHO_AM_I : 0x");
+        Serial.println(id, HEX);
+    }
+
+    if (accel->Get_X_ODR(&accel_odr) == LSM6DSO32_OK) {
+        Serial.print("Accel ODR : ");
+        Serial.print(accel_odr);
+        Serial.println(" Hz");
+    }
+
+    if (accel->Get_G_ODR(&gyro_odr) == LSM6DSO32_OK) {
+        Serial.print("Gyro ODR : ");
+        Serial.print(gyro_odr);
+        Serial.println(" Hz");
+    }
+
+    if (accel->Get_X_FS(&accel_fs) == LSM6DSO32_OK) {
+        Serial.print("Accel FS : ±");
+        Serial.print(accel_fs);
+        Serial.println(" g");
+    }
+
+    if (accel->Get_G_FS(&gyro_fs) == LSM6DSO32_OK) {
+        Serial.print("Gyro FS : ±");
+        Serial.print(gyro_fs);
+        Serial.println(" dps");
+    }
+
+    if (accel->Get_FIFO_Num_Samples(&fifo_samples) == LSM6DSO32_OK) {
+        Serial.print("FIFO samples : ");
+        Serial.println(fifo_samples);
+    }
+
+    if (accel->Get_FIFO_Full_Status(&fifo_full) == LSM6DSO32_OK) {
+        Serial.print("FIFO full : ");
+        Serial.println(fifo_full);
+    }
+
+    Serial.println("---------------------------------");
     #endif
 }

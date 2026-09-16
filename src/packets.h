@@ -17,24 +17,35 @@ enum SensorID : uint8_t {
 };
 
 struct CHUNK_HEADER {
-  uint16_t sync_word;   // Magic number to find the start of a packet (e.g., 0xAAAA)
+  uint16_t sync_word;   // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
   uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
   uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
   uint32_t payload_len; // How many bytes are in the attached buffer
 } __attribute__((packed));
 
 // Accelerometer
-constexpr uint16_t ADXL371_PACKET_SAMPLES = 83;
+constexpr uint16_t ADXL371_PACKET_SAMPLES = 83;  // Can change
 struct ADXL371_PACKET {
   CHUNK_HEADER header;
   TRIPLET data[ADXL371_PACKET_SAMPLES];  // x, y, z acceleration
 } __attribute__((packed));
+//==============================================================
+constexpr uint16_t LSM_PACKET_SAMPLES = 50;  // Can change
+struct LSM_FIFO_DATA {
+    int16_t Ax;
+    int16_t Ay;
+    int16_t Az;
+    int16_t Wx;
+    int16_t Wy;
+    int16_t Wz;
+} __attribute__((packed));
 
 struct LSM6_PACKET {
     CHUNK_HEADER header;
-    /*...*/
+    LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
+    int16_t tmp;
 } __attribute__((packed));
-
+//==============================================================
 // Environment
 struct BME280_DATA {
     float temperature; // Celsius
