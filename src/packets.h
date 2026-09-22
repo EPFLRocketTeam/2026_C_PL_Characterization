@@ -7,8 +7,8 @@
 enum SensorID : uint8_t {
     ID_ADXL371_MAIN  = 0x01,
     ID_ADXL371_SAT   = 0x02,
-    ID_LSM6_MAIN     = 0x03,
-    ID_LSM6_SAT      = 0x04,
+    ID_LSM_MAIN      = 0x03,
+    ID_LSM_SAT       = 0x04,
     ID_BME280_MAIN   = 0x05,
     ID_BME280_SAT    = 0x06,
     ID_MIC           = 0x07,
@@ -20,17 +20,17 @@ struct CHUNK_HEADER {
   uint8_t sync_word;    // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
   uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
   uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
-  size_t payload_len;   // How many bytes are in the attached buffer
+  uint32_t payload_len;   // How many bytes are in the attached buffer
 } __attribute__((packed));
 
 // Accelerometer
 //==============================================================
-// ADXL371 FIFO word : 2 bytes -> one int16_t sample
+// ADXL371 FIFO word : 2 bytes <-> one int16_t sample
 //==============================================================
-constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO samples (x,y,z) ==> 300 FIFO samples expected
+constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO words (x,y,z) ==> 300 FIFO words expected
 struct ADXL371_PACKET {
   CHUNK_HEADER header;
-  TRIPLET data[ADXL371_PACKET_SAMPLES];  // x, y, z acceleration
+  TRIPLET data[ADXL371_PACKET_SAMPLES];           // x, y, z acceleration
 } __attribute__((packed));
 
 //==============================================================
@@ -52,8 +52,8 @@ struct LSM_FIFO_DATA {
 
 struct LSM_PACKET {
     CHUNK_HEADER header;
-    LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
     int16_t tmp;
+    LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
 } __attribute__((packed));
 
 // Environment

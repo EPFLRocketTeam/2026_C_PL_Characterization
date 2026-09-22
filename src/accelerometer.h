@@ -46,9 +46,9 @@ void print_adxl371_diagnostics();
 //=================================================
 bool setup_lsm(LSM6DSO32Sensor *accel);
 void start_lsm(LSM6DSO32Sensor *accel, uint8_t interrupt_pin, void (*isr)());
-int16_t gatRawTmp(LSM6DSO32Sensor *accel);
+int16_t getRawTmp(LSM6DSO32Sensor *accel);
 void print_lsm_accel(LSM6DSO32Sensor *accel);
 void print_lsm_gyro(LSM6DSO32Sensor *accel);
 void print_lsm_temperature(LSM6DSO32Sensor *accel);
-void log_lsm_data(LSM6DSO32Sensor *accel, uint32_t timestamp, uint8_t sensor_id);
+void log_lsm_fifo(LSM6DSO32Sensor *accel, uint32_t timestamp, uint8_t sensor_id);
 void print_lsm_diagnostics(LSM6DSO32Sensor *accel);
