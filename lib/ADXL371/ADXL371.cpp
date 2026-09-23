@@ -21,7 +21,7 @@ ADXL371class::ADXL371class(int csPinInput, SPIClass &spi)
 void ADXL371class::begin()
 {
     m_spi->begin();
-    // m_spi->beginTransaction(SPISettings(SPI_SPEED)); // CPHA = CPOL = 0
+    //m_spi->beginTransaction(SPISettings(SPI_SPEED)); // CPHA = CPOL = 0
 
     digitalWrite(m_csPin, HIGH);                                       // Pin ready
     pinMode(m_csPin, OUTPUT);                                          // Setting chip select pin
@@ -29,8 +29,8 @@ void ADXL371class::begin()
 
 void ADXL371class::begin(uint32_t spiClockSpeed)
 {
-    begin();
     m_spiSettings = SPISettings(spiClockSpeed, MSBFIRST, SPI_MODE0);
+    begin();
 }
 
 bool ADXL371class::reset()
@@ -154,10 +154,10 @@ void ADXL371class::setFifoSamples(int sampleSize)
     }
 
     m_sampleSize = sampleSize;
-    // sampleSize -= 1;
+    sampleSize -= 1;
 
-    writeRegister(FIFO_SAMPLES,static_cast<uint8_t>(sampleSize & 0xFF));
-    updateRegister(FIFO_CTL,static_cast<uint8_t>((sampleSize >> 8) & 0x01),FIFO_SAMPLES_8_MASK);
+    writeRegister(FIFO_SAMPLES,(uint8_t)(sampleSize & 0xFF));   // Set watermark level
+    updateRegister(FIFO_CTL,(uint8_t)((sampleSize >> 8) & 0x01),FIFO_SAMPLES_8_MASK);   // Associate FIFO_FULL to watermark level
 }
 
 void ADXL371class::setFifoReference(int16_t x, int16_t y, int16_t z)
@@ -236,7 +236,7 @@ bool ADXL371class::readFifoData(TRIPLET *samples)
         return false;
     }
 
-    uint16_t entries_to_read = m_sampleSize - 6;
+    uint16_t entries_to_read = m_sampleSize; //- 6 ?
 
     if ((entries_to_read % 3) != 0) {
         return false;

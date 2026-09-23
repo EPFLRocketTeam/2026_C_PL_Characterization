@@ -9,11 +9,11 @@
 
 ADXL371class adxl_main(CS_PIN_ADXL_Main, SPI);		// Constructor different for each lib...
 Adafruit_BME280 bme_main(CS_PIN_BME_Main, &SPI);
-LSM6DSO32Sensor lsm_main(&SPI, CS_PIN_LSM_Main);
+LSM6DSO32Sensor lsm_main(&SPI, CS_PIN_LSM_Main, 10000000);
 
 ADXL371class adxl_sat(CS_PIN_ADXL_Sat, SPI1);
 Adafruit_BME280 bme_sat(CS_PIN_BME_Sat, &SPI1);
-LSM6DSO32Sensor lsm_sat(&SPI1, CS_PIN_LSM_Sat);
+LSM6DSO32Sensor lsm_sat(&SPI1, CS_PIN_LSM_Sat, 10000000);
 
 uint32_t last_bme_read = 0;
 
@@ -70,15 +70,13 @@ void test_miso1_idle_drive()
 
 void setup() {
 	SPI.begin();
+	SPI1.begin();
 	#ifdef DEBUG_
 	Serial.begin(115200);
 	while (!Serial) {}
 	Serial.println("----- Program Start -----");
 	#endif
 
-	delay(100);
-
-	//test_miso1_idle_drive();
 	delay(100);
 
 	// Setup buzzer
@@ -94,6 +92,17 @@ void setup() {
     digitalWrite(CS_PIN_BME_Sat, HIGH); pinMode(CS_PIN_BME_Sat, OUTPUT); 
 	
 	delay(5);
+
+	// Activate all sensors SPI mode
+	digitalWrite(CS_PIN_ADXL_Main, LOW); delay(1); digitalWrite(CS_PIN_ADXL_Main, HIGH);	// SPI (main)
+    digitalWrite(CS_PIN_LSM_Main, LOW);  delay(1); digitalWrite(CS_PIN_LSM_Main, HIGH);
+    digitalWrite(CS_PIN_BME_Main, LOW);  delay(1); digitalWrite(CS_PIN_BME_Main, HIGH);
+    
+    digitalWrite(CS_PIN_ADXL_Sat, LOW);  delay(1); digitalWrite(CS_PIN_ADXL_Sat, HIGH);		// SPI1 (sat)
+    digitalWrite(CS_PIN_LSM_Sat, LOW);   delay(1); digitalWrite(CS_PIN_LSM_Sat, HIGH);
+    digitalWrite(CS_PIN_BME_Sat, LOW);   delay(1); digitalWrite(CS_PIN_BME_Sat, HIGH);
+    
+    delay(5);
 
 	// Initialization start beep
 	beep(1000);
@@ -189,13 +198,15 @@ void setup() {
 	beeps(100, 3);
 	delay(5);
 
-	if (has_adxl_main) start_adxl371(&adxl_main, INT_PIN_ADXL_Main, adxl_main_ISR);
-    if (has_adxl_sat) start_adxl371(&adxl_sat, INT_PIN_ADXL_Sat, adxl_sat_ISR);
-
+	// Keep this start order !!! ADXL first makes lsm crash !!!
 	if (has_lsm_main) start_lsm(&lsm_main, INT_PIN_LSM_Main, lsm_main_ISR);
+	delay(1);
     if (has_lsm_sat) start_lsm(&lsm_sat, INT_PIN_LSM_Sat, lsm_sat_ISR);
-	digitalWrite(CS_PIN_BME_Main, HIGH); pinMode(CS_PIN_BME_Main, OUTPUT);
-	digitalWrite(CS_PIN_ADXL_Main, HIGH); pinMode(CS_PIN_ADXL_Main, OUTPUT);
+	delay(1);
+	if (has_adxl_main) start_adxl371(&adxl_main, INT_PIN_ADXL_Main, adxl_main_ISR); 
+	delay(1);
+    if (has_adxl_sat) start_adxl371(&adxl_sat, INT_PIN_ADXL_Sat, adxl_sat_ISR);
+	delay(1);
 }
 
 void loop() {
@@ -288,7 +299,6 @@ void loop() {
 			if (has_bme_main) log_bme_values(&bme_main, ID_BME280_MAIN);
 			if (has_bme_sat) log_bme_values(&bme_sat, ID_BME280_SAT);
 			last_bme_read = millis();
-			digitalWriteFast(CS_PIN_BME_Main, HIGH);
 		}
 
 		// Drain Ring Buffer to SD Card

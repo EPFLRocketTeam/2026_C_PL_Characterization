@@ -95,9 +95,8 @@ bool setup_adxl371(ADXL371class *accel) {
     #ifdef DEBUG_
     accel->printDevice();
     #endif
-
-    accel->setOperatingMode(STANDBY);
-
+    // Filter calibration mode
+    accel->setOperatingMode(STANDBY);           // Disable measur for setup
     accel->setOdr(ODR_5120Hz);                  //output data rate
     accel->setBandwidth(BW_1280Hz);             //low-pass filter cutoff frequency
     accel->enableLowNoiseOperation(true);
@@ -105,15 +104,9 @@ bool setup_adxl371(ADXL371class *accel) {
     accel->disableHighPassFilter(true);         //keep low acceleration in signal
     accel->disableLowPassFilter(false);         //filter to higher frequency (Nyquist-Shanon) 
     accel->setFilterSettling(FSP_4_OVER_ODR);   //short settling time
+    accel->setOperatingMode(FULL_BANDWIDTH);    // Start calibration measure
 
-    accel->setFifoSamples(300);                 //set FIFO watermarks
-    accel->setFifoFormat(XYZ);                  //set data format
-    accel->setFifoMode(STREAM);                 //continious writing
-
-    accel->selectInt1Function(FIFO_FULL);       //int1 setup (when watermarks reached)
-    accel->setOperatingMode(FULL_BANDWIDTH);     
-
-    delay(2*4/5120); // Allow filter settling period to complete before collecting direct-register and FIFO means.
+    delay(2 * 4.0f/5120.0f); // Allow filter settling period to complete before collecting direct-register and FIFO means.
 
     int32_t sum_x = 0;
     int32_t sum_y = 0;
@@ -132,25 +125,28 @@ bool setup_adxl371(ADXL371class *accel) {
     }
 
     accel->setFifoReference(sum_x / 64, sum_y / 64, sum_z / 64);
-
-    // Leave the final FIFO configuration ready, but do not start it yet.
-    accel->setOperatingMode(STANDBY);
-    accel->setFifoMode(STREAM);
-
-    adxl371_packet.header.sync_word = 0xAA;
-    adxl371_packet.header.payload_len = sizeof(adxl371_packet.data);
+    
+    // Critical FIFO config with workaround procedure
+    accel->setOperatingMode(STANDBY);           // Stop measure
+    accel->enableExternalTrigger(true);         // Enable external trigger (block ADC)
+    accel->setFifoMode(FIFO_DISABLED);          // Clear FIFO
+    accel->setFifoSamples(300);                 // set FIFO watermarks
+    accel->setFifoFormat(XYZ);                  // set data format
+    accel->selectInt1Function(FIFO_FULL);       // int1 setup (when watermarks reached)     
+    accel->setFifoMode(STREAM);                 // continious FIFO writing
+    accel->setOperatingMode(FULL_BANDWIDTH);   // Ready to satrt (waiting trigger)
 
     return true;
 }
 
 void start_adxl371(ADXL371class *accel, uint8_t interrupt_pin, void (*isr)()) {
     pinMode(interrupt_pin, INPUT);
+    accel->getStatus();
+    attachInterrupt(digitalPinToInterrupt(interrupt_pin), isr, RISING);
 
     // Clear any old status before enabling the interrupt.
-    accel->getStatus();
-
-    attachInterrupt(digitalPinToInterrupt(interrupt_pin), isr, RISING);
-    accel->setOperatingMode(FULL_BANDWIDTH);
+    accel->enableExternalTrigger(false);    // Deblock ADC -> start measure
+    //accel->setOperatingMode(FULL_BANDWIDTH); 
 }
 
 
@@ -171,9 +167,17 @@ void print_adxl371_accel(ADXL371class *accel) {
 void log_adxl371_fifo(ADXL371class *accel, uint32_t timestamp, uint8_t sensor_id) {
     int index = sensor_index(sensor_id);
 
+    accel->enableExternalTrigger(true);         // Disable FIFO activity
     uint8_t status_before = accel->getStatus();
     bool valid = accel->readFifoData(adxl371_packet.data);
     uint8_t status_after = accel->getStatus();
+
+    // Workaround process to avoid misaligned measure
+    accel->setOperatingMode(STANDBY);           // Setup mode
+    accel->setFifoMode(FIFO_DISABLED);          // Clear FIFO
+    accel->setFifoMode(STREAM);                 // Restore FIFO mode
+    accel->setOperatingMode(FULL_BANDWIDTH);    // Ready to measure
+    accel->enableExternalTrigger(false);        // Start measure
 
     if (index >= 0 && ((status_before | status_after) & FIFO_OVR)) {
         adxl371_overruns[index]++;
@@ -198,7 +202,7 @@ void log_adxl371_fifo(ADXL371class *accel, uint32_t timestamp, uint8_t sensor_id
         Serial.println(fifo_order_name(accel->getFifoAxisOrder()));
         #endif
 
-        return;
+        return; 
     }
 
     adxl371_packet.header.sensor_type = sensor_id;
@@ -241,14 +245,16 @@ bool setup_lsm(LSM6DSO32Sensor *accel) {
     }
     // Explicitly check physical sensor presence
     uint8_t id = 0;
-    if (accel->ReadID(&id) != LSM6DSO32_OK) {
+    if (accel->IO_Read(&id, 0x0F, 1) != 0) {
         #ifdef DEBUG_
         Serial.println("WHO_AM_I read ERROR");
         #endif
         return false;
     }
+    #ifdef DEBUG_
     Serial.print("WHO_AM_I = 0x");
     Serial.println(id, HEX);
+    #endif
 
     if (id != 0x6C) {
         #ifdef DEBUG_
@@ -259,79 +265,69 @@ bool setup_lsm(LSM6DSO32Sensor *accel) {
     #ifdef DEBUG_
     Serial.println("LSM6DSO32 initialized successfully."); 
     #endif
-
+/*
     // Sensor reset, erase previous config
-    accel->Write_Reg(0x12, 0x01); 
-    delay(15); 
+    uint8_t reset_val = 0x01;
+    accel->IO_Write(&reset_val, 0x12, 1);
+    delay(15);
 
-    // Setup LSM with highest sensibility & measure logging
-    // Accel ODR=6667Hz 1010b, FS=+/-32g 01b LFP2_EN 0b + 0b -> 0xA4
-    if (accel->Write_Reg(0x10, 0xA4) != LSM6DSO32_OK) return false;
-    uint8_t ctr10=0;
-    accel->Read_Reg(0x10, &ctr10);
-    Serial.print("0x10 = 0b");
-    Serial.println(ctr10, BIN);
-    // Gyro ODR=6667Hz 1010b FS=+/-2000dps 11b LFP2 0b + 0b -> 0xAC
-    if (accel->Write_Reg(0x11, 0xAC) != LSM6DSO32_OK) return false;
-
-    // Disable I2C interface
-    uint8_t ctrl4 = 0;
-    if (accel->Read_Reg(0x13, &ctrl4) == LSM6DSO32_OK) {
-        ctrl4 |= (1 << 2); 
-        accel->Write_Reg(0x13, ctrl4);
+    // Disable I2C interface: CTRL4_C (0x13), bit 2
+    uint8_t ctrl4_c = 0;
+    if (accel->IO_Read(&ctrl4_c, 0x13, 1) != LSM6DSO32_OK) {
+        return false;
     }
-    // Disable I3C interface
-    uint8_t val = 0;
-    accel->Read_Reg(0x18, &val);
-    val |= (1 << 1); 
-    accel->Write_Reg(0x18, val);
+    ctrl4_c |= 0x04;
+    if (accel->IO_Write(&ctrl4_c, 0x13, 1) != LSM6DSO32_OK) {
+        return false;
+    }
+    // Disable I3C interface: CTRL9_XL (0x18), bit 1
+    uint8_t ctrl9_xl = 0;
+    if (accel->IO_Read(&ctrl9_xl, 0x18, 1) != LSM6DSO32_OK) {
+        return false;
+    }
+    ctrl9_xl |= 0x02;
+    if (accel->IO_Write(&ctrl9_xl, 0x18, 1) != LSM6DSO32_OK) {
+        return false;
+    }
+*/
+    // Setup LSM with highest sensibility & measure logging
+    // 0x10 : Accel ODR=6667Hz 1010b, FS=+/-32g 01b LFP2_EN 0b + 0b -> 0xA4
+    // 0x11 : Gyro ODR=6667Hz 1010b FS=+/-2000dps 11b LFP2 0b + 0b -> 0xAC
+    // 0x12 : Enable multiregister access
+    uint8_t ctrl_regs[3] = {0xA4, 0xAC, 0x44};
+    if (accel->IO_Write(ctrl_regs, 0x10, 3) != 0) return false;
 
     // FIFO config
-    accel->Write_Reg(0x12, 0x44);   // Enable multiregister access
-    // Bypass mode for configuration 
-    if (accel->Write_Reg(0x0A, 0x00) != LSM6DSO32_OK) return false;     
-    // Set watermark à 300
-    if (accel->Write_Reg(0x07, 0x2C) != LSM6DSO32_OK
-     || accel->Write_Reg(0x08, 0x81) != LSM6DSO32_OK) {                 
+    // 0x07 : Set watermark à 300
+    // 0x08 : Set watermark
+    // 0x09 : Set FIFO X/G BDR => 0xAA
+    // 0x0A : Set FIFO Bypass mode to clean memory
+    uint8_t fifo_regs[4] = {0x2C, 0x81, 0xAA, 0x00};
+    if (accel->IO_Write(fifo_regs, 0x07, 4) != 0) {
         #ifdef DEBUG_
-        Serial.println("Set_FIFO_Watermark_Level FAILED");
-        #endif
-        return false;
-    }
-    // Set X/G FIFO BDR
-    if (accel->Write_Reg(0x09, 0xAA) != LSM6DSO32_OK) {
-        #ifdef DEBUG_
-        Serial.println("Set_FIFO_X_BDR FAILED");
-        Serial.println("Set_FIFO_G_BDR FAILED");
+        Serial.println("FIFO Config FAILED");
         #endif
         return false;
     }
 
-    // Set int1 to trigger on watermark threshold 
+    // Set int1 to trigger on watermark threshold
+
     uint8_t int1_ctrl = 0;
-    if (accel->Read_Reg(0x0D, &int1_ctrl) != LSM6DSO32_OK) {
-        #ifdef DEBUG_
-        Serial.println("INT1_CTRL read ERROR");
-        #endif
-        return false;
-    }
-    int1_ctrl |= (1 << 3);
-    if (accel->Write_Reg(0x0D, int1_ctrl) != LSM6DSO32_OK) {
+    if (accel->IO_Read(&int1_ctrl, 0x0D, 1) != 0) return false;
+    int1_ctrl |= (1 << 3); 
+    if (accel->IO_Write(&int1_ctrl, 0x0D, 1) != 0) {
         #ifdef DEBUG_
         Serial.println("INT1_CTRL write ERROR");
         #endif
         return false;
     }
 
-    // Check int1 mapping
     #ifdef DEBUG_
     uint8_t check = 0;
-    if (accel->Read_Reg(0x0D, &check) != LSM6DSO32_OK) {
-        Serial.println("INT1_CTRL readback ERROR");
-        return false;
+    if (accel->IO_Read(&check, 0x0D, 1) == 0) {
+        Serial.print("INT1_CTRL after = 0x");
+        Serial.println(check, HEX);
     }
-    Serial.print("INT1_CTRL after = 0x");
-    Serial.println(check, HEX);
     #endif
 
     return true;
@@ -345,7 +341,8 @@ void start_lsm(LSM6DSO32Sensor *accel, uint8_t interrupt_pin, void (*isr)()) {
     attachInterrupt(digitalPinToInterrupt(interrupt_pin), isr, RISING);
 
     // Start data acquisition in FIFO
-    if (accel->Write_Reg(0x0A, 0x01) != LSM6DSO32_OK) {
+    uint8_t mode = 0x01;
+    if (accel->IO_Write(&mode, 0x0A, 1) != LSM6DSO32_OK) {
         #ifdef DEBUG_
         Serial.println("FIFO MODE fail !");
         #endif

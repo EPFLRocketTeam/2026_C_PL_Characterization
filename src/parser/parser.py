@@ -238,4 +238,4 @@ def parse_binary(input_file):
 
 if __name__ == '__main__':
     # Replace with your actual file name
-    parse_binary("data_0008.bin")
+    parse_binary("data_0064.bin")

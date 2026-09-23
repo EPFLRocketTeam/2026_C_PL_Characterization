@@ -30,7 +30,7 @@ struct CHUNK_HEADER {
 constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO words (x,y,z) ==> 300 FIFO words expected
 struct ADXL371_PACKET {
   CHUNK_HEADER header;
-  TRIPLET data[ADXL371_PACKET_SAMPLES];           // x, y, z acceleration
+  TRIPLET data[ADXL371_PACKET_SAMPLES];           // 100 * {x, y, z} acceleration
 } __attribute__((packed));
 
 //==============================================================
