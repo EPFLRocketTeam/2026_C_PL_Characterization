@@ -21,3 +21,4 @@ releases/
 # Test outputs
 src/parser/data_*
 src/parcer/.vscode
+test/*

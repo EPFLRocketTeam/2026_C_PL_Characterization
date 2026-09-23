@@ -7,24 +7,28 @@
 #include "environment.h"
 #include "accelerometer.h"
 
-ADXL372class accel_main(CS_PIN_Accel_Main, SPI1);
+ADXL371class adxl_main(CS_PIN_ADXL_Main, SPI);		// Constructor different for each lib...
 Adafruit_BME280 bme_main(CS_PIN_BME_Main, &SPI);
+LSM6DSO32Sensor lsm_main(&SPI, CS_PIN_LSM_Main, 10000000);
 
-ADXL372class accel_sat_1(CS_PIN_Accel_Sat_1, SPI);
-Adafruit_BME280 bme_sat_1(CS_PIN_BME_Sat_1, &SPI);
-
-ADXL372class accel_sat_2(CS_PIN_Accel_Sat_2, SPI1);
+ADXL371class adxl_sat(CS_PIN_ADXL_Sat, SPI1);
+Adafruit_BME280 bme_sat(CS_PIN_BME_Sat, &SPI1);
+LSM6DSO32Sensor lsm_sat(&SPI1, CS_PIN_LSM_Sat, 10000000);
 
 uint32_t last_bme_read = 0;
+
 bool is_logging = true;
 
-bool has_adxl_main = false;
-bool has_adxl_sat_1 = false;
-bool has_adxl_sat_2 = false;
+// Sensors connection flags
+bool has_adxl_main = false;		
+bool has_lsm_main  = false;
 bool has_bme_main  = false;
-bool has_bme_sat_1 = false;
 
-volatile bool pfm_triggered = false;
+bool has_adxl_sat  = false;
+bool has_lsm_sat   = false;
+bool has_bme_sat   = false;
+
+volatile bool pfm_triggered = false;	// Power fail flag
 
 uint32_t jumper_high_start = 0;
 bool jumper_bouncing = false;
@@ -36,11 +40,14 @@ FASTRUN void power_fail_ISR() {
 void test_miso1_idle_drive()
 {
     // Every device on SPI1 must be deselected.
-	pinMode(CS_PIN_Accel_Main, OUTPUT);
-	pinMode(CS_PIN_Accel_Sat_2, OUTPUT);
+	pinMode(CS_PIN_ADXL_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_ADXL_Sat, HIGH);
 
-    digitalWriteFast(CS_PIN_Accel_Main, HIGH);
-    digitalWriteFast(CS_PIN_Accel_Sat_2, HIGH);
+	pinMode(CS_PIN_LSM_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_LSM_Sat, HIGH);
+
+	pinMode(CS_PIN_BME_Sat, OUTPUT);
+    digitalWriteFast(CS_PIN_BME_Sat, HIGH);
 
     delay(10);
 
@@ -62,6 +69,8 @@ void test_miso1_idle_drive()
 }
 
 void setup() {
+	SPI.begin();
+	SPI1.begin();
 	#ifdef DEBUG_
 	Serial.begin(115200);
 	while (!Serial) {}
@@ -70,67 +79,95 @@ void setup() {
 
 	delay(100);
 
-	test_miso1_idle_drive();
-	while(1){}
-
 	// Setup buzzer
 	setup_buzzer();
 
 	// Setup SPI CS pins (deselect all sensors)
-	digitalWrite(CS_PIN_Accel_Main, HIGH); pinMode(CS_PIN_Accel_Main, OUTPUT); 
-    digitalWrite(CS_PIN_Accel_Sat_1, HIGH); pinMode(CS_PIN_Accel_Sat_1, OUTPUT); 
-    digitalWrite(CS_PIN_Accel_Sat_2, HIGH); pinMode(CS_PIN_Accel_Sat_2, OUTPUT); 
-    digitalWrite(CS_PIN_BME_Main, HIGH); pinMode(CS_PIN_BME_Main, OUTPUT); 
-    digitalWrite(CS_PIN_BME_Sat_1, HIGH); pinMode(CS_PIN_BME_Sat_1, OUTPUT); 
+	digitalWrite(CS_PIN_ADXL_Main, HIGH); pinMode(CS_PIN_ADXL_Main, OUTPUT);	// SPI (main)
+	digitalWrite(CS_PIN_LSM_Main, HIGH); pinMode(CS_PIN_LSM_Main, OUTPUT);
+	digitalWrite(CS_PIN_BME_Main, HIGH); pinMode(CS_PIN_BME_Main, OUTPUT); 
+
+    digitalWrite(CS_PIN_ADXL_Sat, HIGH); pinMode(CS_PIN_ADXL_Sat, OUTPUT);		// SPI1 (sat)
+    digitalWrite(CS_PIN_LSM_Sat, HIGH); pinMode(CS_PIN_LSM_Sat, OUTPUT);
+    digitalWrite(CS_PIN_BME_Sat, HIGH); pinMode(CS_PIN_BME_Sat, OUTPUT); 
 	
 	delay(5);
+
+	// Activate all sensors SPI mode
+	digitalWrite(CS_PIN_ADXL_Main, LOW); delay(1); digitalWrite(CS_PIN_ADXL_Main, HIGH);	// SPI (main)
+    digitalWrite(CS_PIN_LSM_Main, LOW);  delay(1); digitalWrite(CS_PIN_LSM_Main, HIGH);
+    digitalWrite(CS_PIN_BME_Main, LOW);  delay(1); digitalWrite(CS_PIN_BME_Main, HIGH);
+    
+    digitalWrite(CS_PIN_ADXL_Sat, LOW);  delay(1); digitalWrite(CS_PIN_ADXL_Sat, HIGH);		// SPI1 (sat)
+    digitalWrite(CS_PIN_LSM_Sat, LOW);   delay(1); digitalWrite(CS_PIN_LSM_Sat, HIGH);
+    digitalWrite(CS_PIN_BME_Sat, LOW);   delay(1); digitalWrite(CS_PIN_BME_Sat, HIGH);
+    
+    delay(5);
 
 	// Initialization start beep
 	beep(1000);
 
-	// Setup accelerometers
+	// Setup main sensors
 	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Main");
+	Serial.println();
+	Serial.println("Connecting ADXL371 Main");
 	#endif
-	has_adxl_main = setup_adxl372(&accel_main);
+	has_adxl_main = setup_adxl371(&adxl_main);
 	conditional_beeps(has_adxl_main, 100, 2, 200, 1);
-
-	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Sat 1");
-	#endif
-	has_adxl_sat_1 = setup_adxl372(&accel_sat_1);
-	conditional_beeps(has_adxl_sat_1, 100, 2, 200, 1);
-
-	#ifdef DEBUG_
-	Serial.println("Connecting ADXL372 Sat 2");
-	#endif
-	has_adxl_sat_2 = setup_adxl372(&accel_sat_2);
-	conditional_beeps(has_adxl_sat_2, 100, 2, 200, 1);
-	
 	delay(5);
 
-	// Setup environment sensors
 	#ifdef DEBUG_
+	Serial.println();
 	Serial.println("Connecting BME280 Main");
 	#endif
 	has_bme_main = setup_bme(&bme_main);
 	conditional_beeps(has_bme_main, 100, 2, 200, 1);
-
-	#ifdef DEBUG_
-	Serial.println("Connecting BME280 Sat 1");
-	#endif
-	has_bme_sat_1 = setup_bme(&bme_sat_1);
-	conditional_beeps(has_bme_sat_1, 100, 2, 200, 1);
-
 	delay(5);
 
 	#ifdef DEBUG_
-	if (has_adxl_main) Serial.println("ADXL372 Main Connected");
-	if (has_adxl_sat_1) Serial.println("ADXL372 Sat 1 Connected");
-	if (has_adxl_sat_2) Serial.println("ADXL372 Sat 2 Connected");
-	
+	Serial.println();
+	Serial.println("Connecting LSM6DSO32 Main");
+	#endif
+	has_lsm_main = setup_lsm(&lsm_main);
+	conditional_beeps(has_lsm_main, 100, 2, 200, 1);
+	delay(5);
+
+	// Setup main sensors
+	#ifdef DEBUG_
+	Serial.println();
+	Serial.println("Connecting ADXL371 Sat");
+	#endif
+	has_adxl_sat = setup_adxl371(&adxl_sat);
+	conditional_beeps(has_adxl_sat, 100, 2, 200, 1);
+	delay(5);
+
+	#ifdef DEBUG_
+	Serial.println();
+	Serial.println("Connecting BME280 Sat");
+	#endif
+	has_bme_sat = setup_bme(&bme_sat);
+	conditional_beeps(has_bme_sat, 100, 2, 200, 1);
+	delay(5);
+
+	#ifdef DEBUG_
+	Serial.println();
+	Serial.println("Connecting LSM6DSO32 Sat");
+	#endif
+	has_lsm_sat = setup_lsm(&lsm_sat);
+	conditional_beeps(has_lsm_sat, 100, 2, 200, 1);
+	delay(5);
+
+	#ifdef DEBUG_
+	Serial.println();
+	if (has_adxl_main) Serial.println("ADXL371 Main Connected");
 	if (has_bme_main) Serial.println("BME280 Main Connected");
-	if (has_bme_sat_1) Serial.println("BME280 Sat 1 Connected");
+	if (has_lsm_main) Serial.println("LSM6DSO32 Main Connected");
+	
+	if (has_adxl_sat) Serial.println("ADXL371 Sat Connected");
+	if (has_bme_sat) Serial.println("BME280 Sat Connected");
+	if (has_lsm_sat) Serial.println("LSM6DSO32 Sat Connected");
+	Serial.println();
+	delay(200);
 	#endif
 
 	// Setup microphones
@@ -141,17 +178,17 @@ void setup() {
 		Serial.println("CRITICAL SD ERROR: Halting system.");
 		#endif
 
-        while (1) {
-			beep(100);
-        }
+		beep(100);
+        while (1) {}
     }
-	
+
 	// Setup Power Failure Monitor
 	pinMode(PFM_PIN, INPUT);
 	attachInterrupt(digitalPinToInterrupt(PFM_PIN), power_fail_ISR, FALLING);
 
 	// Setup User Jumper
 	pinMode(JUMPER_PIN, INPUT);
+	while(digitalRead(JUMPER_PIN) == HIGH) {}	// Wait for jumper removing to start measure
 
 	#ifdef DEBUG_
 	Serial.println("----- Measure Start -----");
@@ -159,15 +196,21 @@ void setup() {
 	
 	// Setup success beeps
 	beeps(100, 3);
+	delay(5);
 
-	if (has_adxl_main) start_adxl372(&accel_main, INT_PIN_Accel_Main, accel_main_ISR);
-
-    if (has_adxl_sat_1) start_adxl372(&accel_sat_1, INT_PIN_Accel_Sat_1, accel_sat_1_ISR);
-
-    if (has_adxl_sat_2) start_adxl372(&accel_sat_2, INT_PIN_Accel_Sat_2, accel_sat_2_ISR);
+	// Keep this start order !!! ADXL first makes lsm crash !!!
+	if (has_lsm_main) start_lsm(&lsm_main, INT_PIN_LSM_Main, lsm_main_ISR);
+	delay(1);
+    if (has_lsm_sat) start_lsm(&lsm_sat, INT_PIN_LSM_Sat, lsm_sat_ISR);
+	delay(1);
+	if (has_adxl_main) start_adxl371(&adxl_main, INT_PIN_ADXL_Main, adxl_main_ISR); 
+	delay(1);
+    if (has_adxl_sat) start_adxl371(&adxl_sat, INT_PIN_ADXL_Sat, adxl_sat_ISR);
+	delay(1);
 }
 
 void loop() {
+
 	// Case of unexpected power shutdown (PFM trigger)
 	if (pfm_triggered && is_logging) {
         uint32_t poll_start = millis();
@@ -230,17 +273,22 @@ void loop() {
 	// Normal operation (continuous logging)
 	if (is_logging) {
 		// Check Accelerometer ISR Flags
-		if (has_adxl_main && accel_main_int) {
-			log_adxl372_fifo(&accel_main, accel_main_timestamp, ID_ADXL372_MAIN);
-			accel_main_int = false;
+		if (has_adxl_main && adxl_main_int) {
+			log_adxl371_fifo(&adxl_main, adxl_main_timestamp, ID_ADXL371_MAIN);
+			adxl_main_int = false;
 		}
-		if (has_adxl_sat_1 && accel_sat_1_int) {
-			log_adxl372_fifo(&accel_sat_1, accel_sat_1_timestamp, ID_ADXL372_SAT_1);
-			accel_sat_1_int = false;
+		if (has_adxl_sat && adxl_sat_int) {
+			log_adxl371_fifo(&adxl_sat, adxl_sat_timestamp, ID_ADXL371_SAT);
+			adxl_sat_int = false;
 		}
-		if (has_adxl_sat_2 && accel_sat_2_int) {
-			log_adxl372_fifo(&accel_sat_2, accel_sat_2_timestamp, ID_ADXL372_SAT_2);
-			accel_sat_2_int = false;
+
+		if (has_lsm_main && lsm_main_int) {
+			log_lsm_fifo(&lsm_main, lsm_main_timestamp, ID_LSM_MAIN);
+			lsm_main_int = false;
+		}
+		if (has_lsm_sat && lsm_sat_int) {
+			log_lsm_fifo(&lsm_sat, lsm_sat_timestamp, ID_LSM_SAT);
+			lsm_sat_int = false;
 		}
 
 		// Read Microphones
@@ -249,7 +297,7 @@ void loop() {
 		// Read BME280s at 10 Hz (every 100ms) without blocking
 		if (millis() - last_bme_read >= 100) {
 			if (has_bme_main) log_bme_values(&bme_main, ID_BME280_MAIN);
-			if (has_bme_sat_1) log_bme_values(&bme_sat_1, ID_BME280_SAT_1);
+			if (has_bme_sat) log_bme_values(&bme_sat, ID_BME280_SAT);
 			last_bme_read = millis();
 		}
 
@@ -276,7 +324,7 @@ void loop() {
 	if (jumper_placed || reached_file_end()) {
 		is_logging = false;
 
-		print_adxl372_diagnostics();
+		print_adxl371_diagnostics();
 
 		#ifdef DEBUG_
 		Serial.println("Safe shutdown triggered.");
@@ -296,6 +344,7 @@ void loop() {
 			// System is safe to power down
 		}
     }
+
 }
 
 // #include <Arduino.h>

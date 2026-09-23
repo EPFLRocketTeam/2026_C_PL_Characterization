@@ -2,31 +2,58 @@
 
 #include <stdint.h>
 
-#include "ADXL372.h"
+#include "ADXL371.h"
 
 enum SensorID : uint8_t {
-    ID_ADXL372_MAIN  = 0x01,
-    ID_ADXL372_SAT_1 = 0x02,
-    ID_ADXL372_SAT_2 = 0x03,
-    ID_BME280_MAIN   = 0x04,
-    ID_BME280_SAT_1  = 0x05,
-    ID_MIC           = 0x06,
-    PFM              = 0x07,
+    ID_ADXL371_MAIN  = 0x01,
+    ID_ADXL371_SAT   = 0x02,
+    ID_LSM_MAIN      = 0x03,
+    ID_LSM_SAT       = 0x04,
+    ID_BME280_MAIN   = 0x05,
+    ID_BME280_SAT    = 0x06,
+    ID_MIC           = 0x07,
+    PFM              = 0x08,
     EOF_             = 0xFF
 };
 
 struct CHUNK_HEADER {
-  uint16_t sync_word;   // Magic number to find the start of a packet (e.g., 0xAAAA)
-  uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL372_MAIN)
+  uint8_t sync_word;    // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
+  uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
   uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
-  uint32_t payload_len; // How many bytes are in the attached buffer
+  uint32_t payload_len;   // How many bytes are in the attached buffer
 } __attribute__((packed));
 
 // Accelerometer
-constexpr uint16_t ADXL372_PACKET_SAMPLES = 83;
-struct ADXL372_PACKET {
+//==============================================================
+// ADXL371 FIFO word : 2 bytes <-> one int16_t sample
+//==============================================================
+constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO words (x,y,z) ==> 300 FIFO words expected
+struct ADXL371_PACKET {
   CHUNK_HEADER header;
-  TRIPLET data[ADXL372_PACKET_SAMPLES];
+  TRIPLET data[ADXL371_PACKET_SAMPLES];           // 100 * {x, y, z} acceleration
+} __attribute__((packed));
+
+//==============================================================
+// LSM6DOS32 FIFO word : 7 bytes
+//                        - 1 bytes Tag
+//                        - 2 bytes X-axis measure
+//                        - 2 bytes Y-axis
+//                        - 2 byets Z-axis
+//==============================================================
+constexpr uint8_t LSM_PACKET_SAMPLES = 150;  // One LSM_packet stores 2 FIFO words ==> 300 FIFO words expected
+struct LSM_FIFO_DATA {
+    int16_t Ax;
+    int16_t Ay;
+    int16_t Az;
+    int16_t Wx;
+    int16_t Wy;
+    int16_t Wz;
+} __attribute__((packed));
+
+struct LSM_PACKET {
+    CHUNK_HEADER header;
+    int16_t tmp;
+    LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
 } __attribute__((packed));
 
 // Environment
@@ -46,7 +73,8 @@ struct BME280_PACKET {
 
 struct Mic_PACKET {
     CHUNK_HEADER header;
-    int16_t audio_samples[MIC_CHUNK_SIZE]; 
+    int16_t left_samples[MIC_CHUNK_SIZE];   // Left micro signal
+    int16_t right_samples[MIC_CHUNK_SIZE];  // Right micro signal
 } __attribute__((packed));
 
 

@@ -9,7 +9,7 @@ bool setup_bme(Adafruit_BME280 *bme) {
 
     // TODO: Look into forced mode and settings
 
-    bme_packet.header.sync_word = 0xAAAA;
+    bme_packet.header.sync_word = 0xAA;
     bme_packet.header.payload_len = sizeof(bme_packet.data);
 
     if (!bme->begin()) {
