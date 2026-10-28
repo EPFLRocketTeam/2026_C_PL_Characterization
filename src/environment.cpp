@@ -13,7 +13,7 @@ bool setup_bme(Adafruit_BME280 *bme) {
     bme_packet.header.payload_len = sizeof(bme_packet.data);
 
     if (!bme->begin()) {
-        #ifdef DEBUG_
+        #if DEBUG_
         Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
         Serial.print("SensorID was: 0x"); Serial.println(bme->sensorID(),16);
         // Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
@@ -36,7 +36,7 @@ bool setup_bme(Adafruit_BME280 *bme) {
 }
 
 void print_bme_values(Adafruit_BME280 *bme) {
-    #ifdef DEBUG_
+    #if DEBUG_
     Serial.print("Temperature = ");
     Serial.print(bme->readTemperature());
     Serial.println(" *C");

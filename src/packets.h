@@ -1,9 +1,12 @@
 #pragma once
 
 #include <stdint.h>
+#include <string.h>
+#include "diagnostics.h"
 
 #include "ADXL371.h"
 
+// Logical IDs 1..7 index counters; wire IDs 0x11..0x14 carry high-rate data.
 enum SensorID : uint8_t {
     ID_ADXL371_MAIN  = 0x01,
     ID_ADXL371_SAT   = 0x02,
@@ -13,48 +16,68 @@ enum SensorID : uint8_t {
     ID_BME280_SAT    = 0x06,
     ID_MIC           = 0x07,
     PFM              = 0x08,
+    // On-disk high-rate packet IDs. Keep these values for parser compatibility.
+    PACKET_ADXL_MAIN = 0x11,
+    PACKET_ADXL_SAT  = 0x12,
+    PACKET_LSM_MAIN  = 0x13,
+    PACKET_LSM_SAT   = 0x14,
+    DIAG_HEALTH_V1   = 0x30,
+    DIAG_LSM_REG_V1  = 0x31,
+    DIAG_ADXL_TRACE_V1 = 0x32,
+    DIAG_SD_TRACE_V1 = 0x33,
     EOF_             = 0xFF
 };
 
 struct CHUNK_HEADER {
-  uint8_t sync_word;    // Magic number to find the start of a packet (e.g., 0xAAAA) ""Why not reduce to 0xAA with uint8_t"" 
-  uint8_t sensor_type;  // ID for the sensor (e.g., 0x01 for ADXL371_MAIN)
-  uint32_t timestamp;   // Timestamp of the block, can reconstruct timestamp of each measurement later
+  uint8_t sync_word;    // 0xAA
+  uint8_t sensor_type;  // On-disk packet ID
+  uint32_t timestamp;   // micros() service/dequeue timestamp, modulo 2^32
   uint32_t payload_len;   // How many bytes are in the attached buffer
 } __attribute__((packed));
 
-// Accelerometer
-//==============================================================
-// ADXL371 FIFO word : 2 bytes <-> one int16_t sample
-//==============================================================
-constexpr uint16_t ADXL371_PACKET_SAMPLES = 100;  // One adxl_packet stores 3 FIFO words (x,y,z) ==> 300 FIFO words expected
-struct ADXL371_PACKET {
-  CHUNK_HEADER header;
-  TRIPLET data[ADXL371_PACKET_SAMPLES];           // 100 * {x, y, z} acceleration
+// Current acquisition packet layout (unchanged on disk).
+constexpr uint16_t LSM_MAX_FIFO_RECORDS = 300;
+constexpr uint16_t ADXL_MAX_BUFFER_SAMPLES = 170;
+constexpr uint16_t ADXL_SAVED_SAMPLES = 100; // 300 axis words per normal acquisition.
+
+enum AcquisitionFlags : uint16_t {
+    ACQ_IRQ_VALID = 0x0001,
+    ACQ_OVERRUN = 0x0002,
+    ACQ_RESET = 0x0004,
+    ACQ_IO_ERROR = 0x0008,
+    ACQ_BAD_MARKER = 0x0010,
+    ACQ_PARTIAL_TAIL = 0x0020,
+    ACQ_BAD_TAG = 0x0040,
+    ACQ_CAPACITY_ERROR = 0x0080,
+    ACQ_TEMP_INVALID = 0x0100
+};
+
+struct AcquisitionMetadata {
+    uint32_t sequence;          // Increments even if enqueue fails.
+    uint32_t epoch;             // LSM: increments on recovery reset.
+    uint32_t irq_timestamp_us;  // Only meaningful with ACQ_IRQ_VALID.
+    uint32_t first_acc_index;   // LSM sample index within epoch; ADXL unused.
+    uint32_t first_gyro_index;  // LSM sample index within epoch; ADXL unused.
+    uint16_t fifo_entries_before;
+    uint16_t record_count;      // ADXL XYZ triplets; LSM tagged 7-byte records.
+    uint16_t flags;
+    int16_t temperature_raw;    // LSM register temperature; ADXL unused.
 } __attribute__((packed));
 
-//==============================================================
-// LSM6DOS32 FIFO word : 7 bytes
-//                        - 1 bytes Tag
-//                        - 2 bytes X-axis measure
-//                        - 2 bytes Y-axis
-//                        - 2 byets Z-axis
-//==============================================================
-constexpr uint8_t LSM_PACKET_SAMPLES = 150;  // One LSM_packet stores 2 FIFO words ==> 300 FIFO words expected
-struct LSM_FIFO_DATA {
-    int16_t Ax;
-    int16_t Ay;
-    int16_t Az;
-    int16_t Wx;
-    int16_t Wy;
-    int16_t Wz;
+struct AdxlAcquisitionPacket {
+    CHUNK_HEADER header;        // Timestamp = service start micros().
+    AcquisitionMetadata meta;
+    TRIPLET samples[ADXL_MAX_BUFFER_SAMPLES];
 } __attribute__((packed));
 
-struct LSM_PACKET {
+struct LsmAcquisitionPacket {
     CHUNK_HEADER header;
-    int16_t tmp;
-    LSM_FIFO_DATA data[LSM_PACKET_SAMPLES];
+    AcquisitionMetadata meta;
+    uint8_t records[LSM_MAX_FIFO_RECORDS][7];
 } __attribute__((packed));
+
+static_assert(sizeof(AcquisitionMetadata) == 28, "Acquisition metadata binary layout changed");
+
 
 // Environment
 struct BME280_DATA {
@@ -86,64 +109,25 @@ extern uint8_t ring_buffer[RING_BUFFER_SIZE];
 extern volatile uint32_t rb_head;
 extern volatile uint32_t rb_tail;
 
-// Push data into the buffer safely
+// All producers and the consumer in this firmware run in the main loop.
+// Do NOT call this function from an ISR or a second thread without redesigning
+// ownership. Audio ISRs write their own AudioRecordQueue, not this ring.
 inline bool ring_buffer_push(const uint8_t *data, uint32_t len) {
-    __disable_irq(); // Pause interrupts to prevent race conditions
-    
-    uint32_t space_available = (RING_BUFFER_SIZE + rb_tail - rb_head - 1) % RING_BUFFER_SIZE;
-    
-    if (len > space_available) {
-        __enable_irq();
-        return false; // Buffer Overflow!
-    }
-
-    for (uint32_t i = 0; i < len; i++) {
-        ring_buffer[rb_head] = data[i];
-        rb_head = (rb_head + 1) % RING_BUFFER_SIZE;
-    }
-    
-    __enable_irq();
-    return true;
-}
-
-/* memcpy based version that would be faster (not yet needed)
-inline bool ring_buffer_push(const uint8_t *data, uint32_t len) {
-    __disable_irq();
-
-    uint32_t space_available =
-        (RING_BUFFER_SIZE + rb_tail - rb_head - 1)
-        % RING_BUFFER_SIZE;
-
-    if (len > space_available) {
-        __enable_irq();
+    const uint32_t head = rb_head;
+    const uint32_t used = (RING_BUFFER_SIZE + head - rb_tail) % RING_BUFFER_SIZE;
+    uint8_t id = (data && len >= 2) ? data[1] : 0;
+    // High-rate on-disk IDs map to logical sensor counters 1..4.
+    if (id >= PACKET_ADXL_MAIN && id <= PACKET_LSM_SAT) id -= 0x10;
+    if (data == nullptr || len > RING_BUFFER_SIZE - used - 1) {
+        diag_inc(acquisition_diag.ring_drop_packets);
+        if (id > 0 && id < 8) diag_inc(acquisition_diag.sensor[id].ring_drops);
         return false;
     }
-
-    uint32_t first_part = RING_BUFFER_SIZE - rb_head;
-
-    if (first_part > len) {
-        first_part = len;
-    }
-
-    memcpy(
-        &ring_buffer[rb_head],
-        data,
-        first_part
-    );
-
-    uint32_t second_part = len - first_part;
-
-    if (second_part > 0) {
-        memcpy(
-            ring_buffer,
-            data + first_part,
-            second_part
-        );
-    }
-
-    rb_head = (rb_head + len) % RING_BUFFER_SIZE;
-
-    __enable_irq();
+    const uint32_t first = len < RING_BUFFER_SIZE - head ? len : RING_BUFFER_SIZE - head;
+    memcpy(ring_buffer + head, data, first);
+    if (len > first) memcpy(ring_buffer, data + first, len - first);
+    rb_head = (head + len) % RING_BUFFER_SIZE;
+    diagnostic_max(acquisition_diag.ring_high_water_bytes, used + len);
+    if (id > 0 && id < 8) diag_inc(acquisition_diag.sensor[id].queued_packets);
     return true;
 }
-*/

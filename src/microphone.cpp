@@ -17,9 +17,6 @@ bool setup_microphones() {
     mic_packet.header.sensor_type = ID_MIC;
     mic_packet.header.payload_len = sizeof(mic_packet.left_samples) + sizeof(mic_packet.right_samples);
 
-    queueLeft.begin();
-    queueRight.begin();
-
     return true;
 }
 
@@ -32,9 +29,13 @@ void read_microphone() {
         memcpy(mic_packet.left_samples, bufL, 256);  // 128 samples * 2 bytes
         memcpy(mic_packet.right_samples, bufR, 256); 
 
-        queueLeft.freeBuffer();
+        queueLeft.freeBuffer(); 
         queueRight.freeBuffer();
 
         ring_buffer_push((uint8_t*)&mic_packet, sizeof(mic_packet));
     }
+}
+void start_microphones() {
+    queueLeft.begin();
+    queueRight.begin();
 }

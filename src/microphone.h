@@ -8,3 +8,4 @@
 
 bool setup_microphones();
 void read_microphone();
+void start_microphones();

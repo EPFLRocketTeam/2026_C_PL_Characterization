@@ -22,3 +22,8 @@ releases/
 src/parser/data_*
 src/parcer/.vscode
 test/*
+*.csv
+*.json
+*.wav
+*.exe
+*.pyc
